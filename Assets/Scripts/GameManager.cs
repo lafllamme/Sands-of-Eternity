@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 public class GameManager : MonoBehaviour
@@ -6,6 +7,7 @@ public class GameManager : MonoBehaviour
 
     [Header("Run Stats")]
     public int coins = 0;
+    public Action<int> onCoinsChanged;  // fires with new total
 
     void Awake()
     {
@@ -16,7 +18,16 @@ public class GameManager : MonoBehaviour
 
     public void AddCoins(int amount)
     {
-        coins += amount;
-        UIHud.I?.SetCoins(coins);   // UI aktualisieren
+        if (amount == 0) return;
+        coins = Mathf.Max(0, coins + amount);
+        onCoinsChanged?.Invoke(coins);
+        UIHud.I?.SetCoins(coins);       // safe for now; can remove once HUD subscribes
+    }
+
+    public void ResetRun()
+    {
+        coins = 0;
+        onCoinsChanged?.Invoke(coins);
+        UIHud.I?.SetCoins(coins);
     }
 }
