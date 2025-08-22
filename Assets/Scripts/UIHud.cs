@@ -9,7 +9,7 @@ public class UIHud : MonoBehaviour
     [Header("HP Bar")]
     [Tooltip("Image type MUST be Filled → Horizontal")]
     public Image hpFill;
-    public Gradient hpGradient;   // set in Inspector (Red ← Yellow ← Green)
+    public Gradient hpGradient;   // im Inspector setzen (Rot ← Gelb ← Grün)
 
     [Header("Texts")]
     public TMP_Text coinText;
@@ -22,28 +22,30 @@ public class UIHud : MonoBehaviour
     void Start()
     {
         GameObject player = GameObject.FindGameObjectWithTag("Player");
-
         if (player)
         {
             playerStats = player.GetComponent<PlayerStats>();
-            if (playerStats)
+            if (playerStats != null)
             {
-                // initial push (nutzt Getter HP)
-                UpdateHP(playerStats.HP, playerStats.maxHP);
-                // subscribe
+                // initial push mit Gettern
+                UpdateHP(playerStats.HP, playerStats.MaxHP);
+                // Events abonnieren
                 playerStats.onHealthChanged += UpdateHP;
             }
         }
 
-        // Coins initial + subscribe (falls GameManager Event hat)
+        // Coins initial setzen
         if (coinText) coinText.text = (GameManager.I ? GameManager.I.coins : 0).ToString();
-        if (GameManager.I != null) GameManager.I.onCoinsChanged += UpdateCoins;
+
+        // Falls du im GameManager ein onCoinsChanged-Event hast, hier abonnieren:
+        // if (GameManager.I != null) GameManager.I.onCoinsChanged += UpdateCoins;
     }
 
     void OnDestroy()
     {
         if (playerStats != null) playerStats.onHealthChanged -= UpdateHP;
-        if (GameManager.I != null) GameManager.I.onCoinsChanged -= UpdateCoins;
+        // Falls du oben abonniert hast, hier wieder abmelden:
+        // if (GameManager.I != null) GameManager.I.onCoinsChanged -= UpdateCoins;
     }
 
     // ---------- Public API ----------
@@ -58,7 +60,7 @@ public class UIHud : MonoBehaviour
         float t = Mathf.Clamp01((float)hp / max);
         hpFill.fillAmount = t;
 
-        // Farbe aus Gradient (1 = full, 0 = empty)
+        // Farbe aus Gradient (1 = voll, 0 = leer)
         if (hpGradient != null) hpFill.color = hpGradient.Evaluate(t);
     }
 
