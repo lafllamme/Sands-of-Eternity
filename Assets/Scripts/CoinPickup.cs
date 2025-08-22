@@ -7,7 +7,7 @@ public class CoinPickup : MonoBehaviour
 
     void Update()
     {
-        transform.Rotate(Vector3.up * rotateSpeed * Time.deltaTime, Space.World);
+        transform.Rotate(Vector3.forward * rotateSpeed * Time.deltaTime, Space.World);
     }
 
     void OnTriggerEnter(Collider other)
