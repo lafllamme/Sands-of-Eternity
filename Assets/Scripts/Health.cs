@@ -18,7 +18,7 @@ public class Health : MonoBehaviour
     void Awake()
     {
         CurrentHP = Mathf.Clamp(CurrentHP <= 0 ? maxHP : CurrentHP, 0, maxHP);
-        if (debugLogs) Debug.Log($"[Health:{name}] Awake → {CurrentHP}/{maxHP}");
+        // if (debugLogs) Debug.Log($"[Health:{name}] Awake → {CurrentHP}/{maxHP}");
         OnHealthChanged?.Invoke(CurrentHP, maxHP);
     }
 
@@ -36,7 +36,7 @@ public class Health : MonoBehaviour
     {
         while (true)
         {
-            Debug.Log($"[Health:{name}] Tick {Time.time:F2} → {CurrentHP}/{maxHP} Alive:{IsAlive}");
+            // Debug.Log($"[Health:{name}] Tick {Time.time:F2} → {CurrentHP}/{maxHP} Alive:{IsAlive}");
             yield return new WaitForSeconds(1f);
         }
     }
@@ -48,13 +48,13 @@ public class Health : MonoBehaviour
     {
         if (amount <= 0 || !IsAlive)
         {
-            if (debugLogs) Debug.Log($"[Health:{name}] TakeDamage({amount}) IGNORED (alive:{IsAlive})");
+             if (debugLogs) Debug.Log($"[Health:{name}] TakeDamage({amount}) IGNORED (alive:{IsAlive})");
             return;
         }
 
         int before = CurrentHP;
         CurrentHP = Mathf.Max(0, CurrentHP - amount);
-        if (debugLogs) Debug.Log($"[Health:{name}] Took {amount} dmg: {before}→{CurrentHP} / {maxHP}");
+         if (debugLogs) Debug.Log($"[Health:{name}] Took {amount} dmg: {before}→{CurrentHP} / {maxHP}");
         OnHealthChanged?.Invoke(CurrentHP, maxHP);
 
         if (CurrentHP == 0) Die();
@@ -74,7 +74,7 @@ public class Health : MonoBehaviour
         maxHP = Mathf.Max(1, newMax);
         if (refill) CurrentHP = maxHP;
         CurrentHP = Mathf.Clamp(CurrentHP, 0, maxHP);
-        if (debugLogs) Debug.Log($"[Health:{name}] SetMaxHP({newMax}, refill:{refill}) → {CurrentHP}/{maxHP}");
+        // if (debugLogs) Debug.Log($"[Health:{name}] SetMaxHP({newMax}, refill:{refill}) → {CurrentHP}/{maxHP}");
         OnHealthChanged?.Invoke(CurrentHP, maxHP);
         if (CurrentHP == 0) Die();
     }

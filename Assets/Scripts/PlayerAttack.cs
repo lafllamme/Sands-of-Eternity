@@ -43,7 +43,7 @@ public class PlayerAttack : MonoBehaviour
         Collider[] hits = Physics.OverlapSphere(
             origin, radius, enemyMask, QueryTriggerInteraction.Collide);
 
-        Debug.Log($"[Attack] swing @ {origin} r={radius} hits={hits.Length} t={Time.time:F2}");
+        //Debug.Log($"[Attack] swing @ {origin} r={radius} hits={hits.Length} t={Time.time:F2}");
 
         foreach (var hit in hits)
         {
@@ -52,11 +52,11 @@ public class PlayerAttack : MonoBehaviour
             {
                 int before = h.CurrentHP;
                 h.TakeDamage(damage);
-                Debug.Log($"[Attack] hit {hit.name} {before}->{h.CurrentHP}/{h.maxHP}");
+                //Debug.Log($"[Attack] hit {hit.name} {before}->{h.CurrentHP}/{h.maxHP}");
             }
             else
             {
-                Debug.Log($"[Attack] {hit.name} has no Health");
+                //Debug.Log($"[Attack] {hit.name} has no Health");
             }
         }
     }
