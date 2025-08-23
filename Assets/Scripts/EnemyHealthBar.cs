@@ -42,7 +42,7 @@ public class EnemyHealthBar : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning($"[EnemyHealthBar] No Health found on parent of {name}", this);
+            // Debug.LogWarning($"[EnemyHealthBar] No Health found on parent of {name}", this);
             enabled = false;
         }
     }
