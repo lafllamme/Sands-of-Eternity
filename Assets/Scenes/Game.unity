@@ -427,9 +427,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Enemy
   speed: 2.5
   stopDistance: 1.1
-  touchDamage: 1
+  touchDamage: 5
   damageInterval: 0.5
-  hitRange: 1
+  hitRange: 1.2
 --- !u!1 &1134161384
 GameObject:
   m_ObjectHideFlags: 0
@@ -748,7 +748,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e600664ee747a467dbea1bf32ad82d88, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TopDownMover3D
-  speed: 5
+  speed: 8
   smoothTurn: 15
   ground: {fileID: 1415371088}
   margin: 0.5
@@ -885,7 +885,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8ba8342b2fe3245d3b6c5f040e02f275, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Health
-  maxHP: 100
+  maxHP: 30
   debugLogs: 1
 --- !u!1 &1797536159 stripped
 GameObject:
