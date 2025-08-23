@@ -6,18 +6,32 @@ public class UIHud : MonoBehaviour
 {
     public static UIHud I { get; private set; }
 
-    [Header("HP Bar")]
-    [Tooltip("Image type MUST be Filled → Horizontal")]
-    public Image hpFill;
-    public Gradient hpGradient;
+    [Header("HP Bar (child Image must be Filled → Horizontal)")]
+    public Image hpFill;                 // drag HPBarFill here
+    public Gradient hpGradient;          // green→yellow→red gradient
 
-    [Header("Texts")]
+    [Header("HP Text (optional)")]
+    public TMP_Text hpText;              // drag HPText here (TextMeshPro)
+    public bool showPercent = true;      // false = show "HP / Max" instead
+
+    [Header("Other")]
     public TMP_Text coinText;
 
     // cached
     private Health playerHealth;
 
-    void Awake() => I = this;
+    void Awake()
+    {
+        I = this;
+
+        // Safety: make sure the fill image is configured correctly
+        if (hpFill && hpFill.type != Image.Type.Filled)
+        {
+            hpFill.type = Image.Type.Filled;
+            hpFill.fillMethod = Image.FillMethod.Horizontal;
+            hpFill.fillOrigin = (int)Image.OriginHorizontal.Left;
+        }
+    }
 
     void Start()
     {
@@ -33,7 +47,8 @@ public class UIHud : MonoBehaviour
         }
 
         if (coinText) coinText.text = (GameManager.I ? GameManager.I.coins : 0).ToString();
-        // Falls du ein Coin-Event hast: GameManager.I.onCoinsChanged += UpdateCoins;
+        // If you later expose a coin event:
+        // GameManager.I.onCoinsChanged += UpdateCoins;
     }
 
     void OnDestroy()
@@ -44,7 +59,7 @@ public class UIHud : MonoBehaviour
 
     // ---------- Public API ----------
     public void SetHP(int hp, int max) => UpdateHP(hp, max);
-    public void SetCoins(int coins) => UpdateCoins(coins);
+    public void SetCoins(int coins)     => UpdateCoins(coins);
 
     // ---------- Internals ----------
     private void UpdateHP(int hp, int max)
@@ -52,11 +67,27 @@ public class UIHud : MonoBehaviour
         if (!hpFill || max <= 0) return;
 
         float t = Mathf.Clamp01((float)hp / max);
+
+        // Fill amount
         hpFill.fillAmount = t;
 
-        if (hpGradient != null) hpFill.color = hpGradient.Evaluate(t);
-    	Debug.Log($"[UIHud] UpdateHP {hp}/{max} (t={t:F2}) at {Time.time:F2}");
+        // Bar color from gradient (1 = full, 0 = empty)
+        if (hpGradient != null)
+            hpFill.color = hpGradient.Evaluate(t);
 
+        // Text (percent or absolute)
+        if (hpText)
+        {
+            hpText.text = showPercent ? $"{Mathf.RoundToInt(t * 100f)}%" : $"{hp}/{max}";
+
+            // Auto-contrast: pick white/black based on bar brightness
+            Color c = hpFill.color;
+            float luminance = 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b; // perceptual
+            hpText.color = (luminance < 0.55f) ? Color.white : Color.black;
+        }
+
+        // Debug
+        // Debug.Log($"[UIHud] UpdateHP {hp}/{max} (t={t:F2}) at {Time.time:F2}");
     }
 
     private void UpdateCoins(int coins)
