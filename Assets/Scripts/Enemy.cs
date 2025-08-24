@@ -5,17 +5,46 @@ public class Enemy : MonoBehaviour
 {
     [Header("Movement")]
     [Min(0f)] public float speed = 2.5f;
-    [Min(0f)] public float stopDistance = 1.1f;   // visuell anhalten
+    [Min(0f)] public float turnSpeed = 12f;
+    [Min(0f)] public float stopDistance = 1.1f;   // stop this close to target
+
+    [Header("Aggro (chase logic)")]
+    [Min(0f)] public float aggroRadius = 6f;      // start chasing
+    [Min(0f)] public float loseAggroRadius = 9f;  // give up if farther than this
+    [Min(0f)] public float loseDelay = 1.25f;     // memory time after losing sight
+
+    [Header("Wander (when not chasing)")]
+    [Min(0f)] public float wanderRadius = 4f;     // roam around the spawn point
+    [Min(0f)] public float waypointTolerance = 0.2f;
+    public Vector2 wanderWait = new Vector2(0.6f, 1.6f); // min/max seconds between picks
 
     [Header("Bounds")]
     [Tooltip("Sicherheitsabstand zu den Kanten beim Clampen")]
     [Min(0f)] public float clampPadding = 0.5f;
 
+    // ---- internals ----
+    enum State { Wander, Chase }
+    State state = State.Wander;
+
     Transform player;
-    Health health;                 // NEW: cache health for death handling
+    Health health;
     Rigidbody rb;
     Collider[] cols;
-    EnemyAttack enemyAttack;       // if you added it earlier
+    EnemyAttack enemyAttack;
+
+    Vector3 homePos;
+    Vector3 wanderTarget;
+    float   nextWanderTime;
+    float   lostPlayerAt = -1f;
+    float   yLock;
+
+    void OnValidate()
+    {
+        if (loseAggroRadius < aggroRadius + 0.01f)
+            loseAggroRadius = aggroRadius + 0.01f;
+        if (wanderWait.x > wanderWait.y)
+            (wanderWait.x, wanderWait.y) = (wanderWait.y, wanderWait.x);
+    }
 
     void Start()
     {
@@ -28,85 +57,129 @@ public class Enemy : MonoBehaviour
         enemyAttack = GetComponent<EnemyAttack>();
 
         health = GetComponent<Health>();
-        if (health != null)
-        {
-            health.OnDied += HandleDeath;   // subscribe once
-        }
-        else
-        {
-            Debug.LogWarning($"[Enemy] No Health found on {name}");
-        }
+        if (health) health.OnDied += HandleDeath; else Debug.LogWarning($"[Enemy] No Health on {name}");
+
+        homePos = transform.position;
+        yLock   = transform.position.y;
+        PickNewWanderTarget(immediate: true);
     }
 
     void OnDestroy()
     {
-        if (health != null) health.OnDied -= HandleDeath;
+        if (health) health.OnDied -= HandleDeath;
     }
 
     void Update()
     {
-        if (!player) return;
+        float distToPlayer = player ? DistXZ(transform.position, player.position) : float.PositiveInfinity;
 
-        // --- Move towards player ---
-        Vector3 toPlayer = player.position - transform.position;
-        toPlayer.y = 0f;
-        float dist = toPlayer.magnitude;
-
-        if (dist > stopDistance)
+        // ---- state transitions ----
+        if (player)
         {
-            Vector3 dir = (dist > 1e-4f) ? toPlayer / dist : Vector3.zero;
-            transform.position += dir * speed * Time.deltaTime;
+            if (state != State.Chase && distToPlayer <= aggroRadius)
+            {
+                state = State.Chase;
+                lostPlayerAt = -1f;
+            }
+            else if (state == State.Chase)
+            {
+                if (distToPlayer > loseAggroRadius)
+                {
+                    if (lostPlayerAt < 0f) lostPlayerAt = Time.time;               // start memory timer
+                    if (Time.time - lostPlayerAt >= loseDelay)
+                    {
+                        state = State.Wander;
+                        PickNewWanderTarget(immediate: false);
+                    }
+                }
+                else
+                {
+                    lostPlayerAt = -1f; // still close → keep chasing
+                }
+            }
         }
 
-        // --- Clamp to map bounds (nach der Bewegung!) ---
-        if (MapBounds.I != null)
-            transform.position = MapBounds.I.ClampXZ(transform.position, clampPadding);
+        // ---- act ----
+        if (state == State.Chase && player)
+        {
+            MoveTowards(player.position, stopDistance);
+        }
+        else // Wander
+        {
+            if (Time.time >= nextWanderTime ||
+                DistXZ(transform.position, wanderTarget) <= waypointTolerance)
+            {
+                PickNewWanderTarget(immediate: false);
+            }
+            MoveTowards(wanderTarget, 0f);
+        }
+
+        // keep Y locked & clamp to map
+        var p = transform.position; p.y = yLock;
+        if (MapBounds.I != null) p = MapBounds.I.ClampXZ(p, clampPadding);
+        transform.position = p;
     }
+
+    // ---- movement helpers ----
+    void MoveTowards(Vector3 targetWorld, float stop)
+    {
+        Vector3 to = targetWorld - transform.position; to.y = 0f;
+        float dist = to.magnitude;
+        if (dist > Mathf.Max(stop, 0f))
+        {
+            Vector3 dir = to / Mathf.Max(dist, 0.0001f);
+            transform.position += dir * speed * Time.deltaTime;
+
+            if (dir.sqrMagnitude > 0.0001f)
+            {
+                var look = Quaternion.LookRotation(dir, Vector3.up);
+                transform.rotation = Quaternion.Slerp(transform.rotation, look, turnSpeed * Time.deltaTime);
+            }
+        }
+    }
+
+    void PickNewWanderTarget(bool immediate)
+    {
+        Vector2 r = Random.insideUnitCircle * wanderRadius;
+        Vector3 guess = homePos + new Vector3(r.x, 0f, r.y);
+        wanderTarget = (MapBounds.I != null) ? MapBounds.I.ClampXZ(guess, clampPadding) : guess;
+        nextWanderTime = Time.time + (immediate ? 0f : Random.Range(wanderWait.x, wanderWait.y));
+    }
+
+    static float DistXZ(Vector3 a, Vector3 b) { a.y = b.y = 0f; return (a - b).magnitude; }
 
     // ===== Death pipeline =====
     void HandleDeath()
     {
-        // 1) stop behavior immediately
-        enabled = false;                // stops Update() movement
+        // stop behaviour
+        enabled = false;
         if (enemyAttack) enemyAttack.enabled = false;
         if (rb) rb.isKinematic = true;
 
-        // disable all colliders so it can’t hit or be hit anymore
-        if (cols != null)
-        {
-            foreach (var c in cols) if (c) c.enabled = false;
-        }
+        // disable all colliders
+        if (cols != null) foreach (var c in cols) if (c) c.enabled = false;
 
-        // (optional) tell the HP-bar to fade immediately if present
-        var cg = GetComponentInChildren<CanvasGroup>();
-        if (cg) cg.alpha = 0f;
+        // hide any local HP bar instantly
+        var cg = GetComponentInChildren<CanvasGroup>(); if (cg) cg.alpha = 0f;
 
         Debug.Log($"[Enemy] Destroy {name} at {Time.time:F2}");
-
-        // 2) destroy the WHOLE enemy (root is this object)
         Destroy(gameObject);
-        // If your Health/Enemy lived on a child in the future, use:
-        // Destroy(transform.root.gameObject);
     }
 
 #if UNITY_EDITOR
     void OnDrawGizmosSelected()
     {
-        Gizmos.color = new Color(1f, 0.5f, 0f, 0.6f);
-        DrawCircleXZ(transform.position, stopDistance);
-    }
-
-    static void DrawCircleXZ(Vector3 center, float r, int seg = 32)
-    {
-        if (r <= 0f) return;
-        Vector3 prev = center + new Vector3(r, 0f, 0f);
-        for (int i = 1; i <= seg; i++)
-        {
-            float a = (i / (float)seg) * Mathf.PI * 2f;
-            Vector3 p = center + new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r);
-            Gizmos.DrawLine(prev, p);
-            prev = p;
-        }
+        Color c = Gizmos.color;
+        // aggro ring
+        Gizmos.color = new Color(0f, 1f, .4f, .35f);
+        Gizmos.DrawWireSphere(transform.position, aggroRadius);
+        // lose ring
+        Gizmos.color = new Color(1f, .4f, .2f, .35f);
+        Gizmos.DrawWireSphere(transform.position, loseAggroRadius);
+        // stop distance (small ring)
+        Gizmos.color = new Color(1f, .7f, 0f, .6f);
+        Gizmos.DrawWireSphere(transform.position, stopDistance);
+        Gizmos.color = c;
     }
 #endif
 }
