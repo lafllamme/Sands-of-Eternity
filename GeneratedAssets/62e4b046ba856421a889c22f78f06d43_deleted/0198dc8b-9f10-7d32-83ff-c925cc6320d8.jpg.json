@@ -1,0 +1,20 @@
+{
+    "asset": "62e4b046ba856421a889c22f78f06d43",
+    "fileName": "0198dc8b-9f10-7d32-83ff-c925cc6320d8.jpg",
+    "prompt": "Coin Material Ground",
+    "negativePrompt": "",
+    "model": "57ebc7c8-977d-41fb-8263-bfd5fa55e2f4",
+    "modelName": "3D Blocky Elements",
+    "customSeed": -1,
+    "w3CTraceId": "d190e0abf23ec1d4b7c09873178ceb6a",
+    "refinementMode": "Generation",
+    "pixelateTargetSize": 0,
+    "pixelateKeepImageSize": false,
+    "pixelatePixelBlockSize": 0,
+    "pixelateMode": 0,
+    "pixelateOutlineThickness": 0,
+    "doodles": {
+        "m_Items": []
+    },
+    "upscaleFactor": 0
+}

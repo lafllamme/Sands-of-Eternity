@@ -1,0 +1,11 @@
+{
+    "asset": "dd059f9e19c5b461ca14688698ffba41",
+    "fileName": "0198dc98-c3b9-7083-ad26-1052bc3e89f0_Preview.png",
+    "prompt": "single coin gold texture",
+    "negativePrompt": "",
+    "model": "575ecf67-4425-4939-97b9-5e138b8ee234",
+    "modelName": "Unity Texture2D",
+    "customSeed": 994698822,
+    "w3CTraceId": "ec7324b20126a520c07e03d7ac678ad0",
+    "refinementMode": "Generation"
+}

@@ -1,0 +1,11 @@
+{
+    "asset": "dfe3e611ccb974ba7ac3400f9b223966",
+    "fileName": "0198dc62-9954-7146-9a08-23e7a63ae7c5_Preview.png",
+    "prompt": "Human, with face on front and wings on back, 3d",
+    "negativePrompt": "",
+    "model": "575ecf67-4425-4939-97b9-5e138b8ee234",
+    "modelName": "Unity Texture2D",
+    "customSeed": 2029460518,
+    "w3CTraceId": "04cee678cea5259082b7c1b154aa9e83",
+    "refinementMode": "Generation"
+}

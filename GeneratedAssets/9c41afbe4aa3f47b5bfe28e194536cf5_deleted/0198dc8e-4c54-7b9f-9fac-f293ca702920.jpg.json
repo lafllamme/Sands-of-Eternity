@@ -1,0 +1,20 @@
+{
+    "asset": "9c41afbe4aa3f47b5bfe28e194536cf5",
+    "fileName": "0198dc8e-4c54-7b9f-9fac-f293ca702920.jpg",
+    "prompt": "Material Background, looking like coinds.",
+    "negativePrompt": "",
+    "model": "57ebc7c8-977d-41fb-8263-bfd5fa55e2f4",
+    "modelName": "3D Blocky Elements",
+    "customSeed": -1,
+    "w3CTraceId": "f2b8809132f1fcfbf8fa19a98363836a",
+    "refinementMode": "Generation",
+    "pixelateTargetSize": 0,
+    "pixelateKeepImageSize": false,
+    "pixelatePixelBlockSize": 0,
+    "pixelateMode": 0,
+    "pixelateOutlineThickness": 0,
+    "doodles": {
+        "m_Items": []
+    },
+    "upscaleFactor": 0
+}
