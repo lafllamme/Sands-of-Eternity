@@ -15,11 +15,19 @@ public class GameManager : MonoBehaviour
     // ---------- Lives / Respawn ----------
     [Header("Lives & Respawn")]
     public int startLives = 3;
+
+    [Tooltip("Seconds to wait before respawn (shown in HUD).")]
     public float respawnDelay = 0.75f;
-    public Transform playerSpawn; // optional; auto-find by tag "PlayerSpawn" if null
+
+    [Tooltip("Keep this much distance to the MapBounds walls when picking a random spawn.")]
+    public float respawnPadding = 0.8f;
+
+    [Tooltip("Optional fixed spawn. If null, we spawn to a random safe point inside MapBounds.")]
+    public Transform playerSpawn;
 
     [Header("Death Screen")]
-    public GameObject deathScreen; // assign Canvas root (keep disabled in scene)
+    [Tooltip("Assign the Canvas root. Keep disabled in the scene.")]
+    public GameObject deathScreen;
 
     public int Lives { get; private set; }
 
@@ -65,6 +73,7 @@ public class GameManager : MonoBehaviour
         coins = 0;
         onCoinsChanged?.Invoke(coins);
         UIHud.I?.SetCoins(coins);
+
         Lives = startLives;
         OnLivesChanged?.Invoke(Lives);
     }
@@ -117,7 +126,18 @@ public class GameManager : MonoBehaviour
         {
             Lives--;
             OnLivesChanged?.Invoke(Lives);
-            yield return new WaitForSeconds(respawnDelay);
+
+            // Small HUD overlay while waiting (if you implemented it)
+            UIHud.I?.ShowRespawn(respawnDelay, "RESPAWNING...");
+
+            // unscaled time → unaffected by Time.timeScale
+            float t = 0f;
+            while (t < respawnDelay)
+            {
+                t += Time.unscaledDeltaTime;
+                yield return null;
+            }
+
             RespawnPlayer();
         }
         else
@@ -130,12 +150,34 @@ public class GameManager : MonoBehaviour
     {
         if (!playerTransform || !playerHealth) return;
 
-        Vector3 spawnPos = playerSpawn ? playerSpawn.position : playerTransform.position;
+        // --- Pick respawn position ---
+        Vector3 spawnPos;
+        if (playerSpawn)
+        {
+            spawnPos = playerSpawn.position;
+        }
+        else if (MapBounds.I != null)
+        {
+            // uniform random inside bounds with padding, keep current Y
+            Vector3 p = MapBounds.I.RandomPoint(respawnPadding);
+            spawnPos = new Vector3(p.x, playerTransform.position.y, p.z);
+        }
+        else
+        {
+            // fallback: current position
+            spawnPos = playerTransform.position;
+        }
+
+        // Move & clear velocities
         playerTransform.SetPositionAndRotation(spawnPos, playerTransform.rotation);
-
         var rb = playerTransform.GetComponent<Rigidbody>();
-        if (rb) { rb.linearVelocity = Vector3.zero; rb.angularVelocity = Vector3.zero; }
+        if (rb)
+        {
+            rb.linearVelocity = Vector3.zero;         // <- correct property
+            rb.angularVelocity = Vector3.zero;
+        }
 
+        // Refill HP
         playerHealth.SetMaxHP(playerHealth.maxHP, refill: true);
     }
 
