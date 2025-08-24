@@ -1,5 +1,7 @@
 fileFormatVersion: 2
 guid: dd059f9e19c5b461ca14688698ffba41
+labels:
+- UnityAI
 NativeFormatImporter:
   externalObjects: {}
   mainObjectFileID: 2100000

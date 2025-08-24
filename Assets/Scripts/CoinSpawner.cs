@@ -3,17 +3,21 @@ using UnityEngine;
 public class CoinSpawner : MonoBehaviour
 {
     [Header("Coin Settings")]
-    public GameObject coinPrefab;                 // Prefab-Referenz
-    public int coinCount = 10;                    // wie viele Coins insgesamt
-    public Vector2 spawnArea = new Vector2(20, 20); // X = Breite, Y = Tiefe (Z)
+    public GameObject coinPrefab;
+    public int coinCount = 10;
+    public Vector2 spawnArea = new Vector2(20, 20); // X = width, Y = depth (Z)
 
-    [Tooltip("Y-Höhe, auf der die Coins liegen sollen (matcht Boden/Player).")]
+    [Tooltip("Base Y of the spawned coins (raise them a bit above ground).")]
     public float spawnY = 0.25f;
 
-    void Start()
-    {
-        SpawnCoins();
-    }
+    [Header("Rotation Options")]
+    [Tooltip("Use the prefab's rotation instead of identity.")]
+    public bool usePrefabRotation = true;
+
+    [Tooltip("Add a random yaw around world up (keeps them upright).")]
+    public bool randomYaw = false;
+
+    void Start() => SpawnCoins();
 
     void SpawnCoins()
     {
@@ -21,16 +25,18 @@ public class CoinSpawner : MonoBehaviour
 
         for (int i = 0; i < coinCount; i++)
         {
-            // Zufällige Position innerhalb der Fläche (X/Z). Y bleibt konstant.
             float x = Random.Range(-spawnArea.x * 0.5f, spawnArea.x * 0.5f);
             float z = Random.Range(-spawnArea.y * 0.5f, spawnArea.y * 0.5f);
-
             Vector3 pos = new Vector3(x, spawnY, z) + transform.position;
-            Instantiate(coinPrefab, pos, Quaternion.identity);
+
+            Quaternion rot = usePrefabRotation ? coinPrefab.transform.rotation : Quaternion.identity;
+            if (randomYaw)
+                rot = Quaternion.AngleAxis(Random.Range(0f, 360f), Vector3.up) * rot;
+
+            Instantiate(coinPrefab, pos, rot);
         }
     }
 
-    // Optional: Visualisierung der Spawnfläche im Editor
     void OnDrawGizmosSelected()
     {
         Gizmos.color = new Color(1f, 0.85f, 0f, 0.25f);
