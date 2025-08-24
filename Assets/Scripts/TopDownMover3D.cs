@@ -5,59 +5,89 @@ using UnityEngine.InputSystem;
 
 public class TopDownMover3D : MonoBehaviour
 {
-    public float speed = 5f;
+    [Header("Movement")]
+    public float speed = 6f;
     public float smoothTurn = 15f;
 
-    [Header("Map Bounds")]
-    [SerializeField] Transform ground;   // <-- hier deine Plane reinziehen
-    [SerializeField] float margin = 0.5f;
+    [Header("Camera-relative")]
+    public bool cameraRelative = true;
+    public Transform cameraTransform;           // assign Main Camera; auto-finds if null
+
+    [Header("Bounds")]
+    public bool useMapBounds = true;
+    public float clampPadding = 0.5f;
+    [Tooltip("Legacy plane clamp (used if MapBounds not present or useMapBounds = false).")]
+    public Transform ground;
+    public float margin = 0.5f;
 
     float yLock;
+
+    void Awake()
+    {
+        if (!cameraTransform && Camera.main) cameraTransform = Camera.main.transform;
+    }
 
     void Start() => yLock = transform.position.y;
 
     void Update()
     {
-        // --- Input ---
-        Vector2 m = Vector2.zero;
-        #if ENABLE_INPUT_SYSTEM
-        var k = Keyboard.current;
-        if (k != null)
-        {
-            if (k.aKey.isPressed || k.leftArrowKey.isPressed)  m.x -= 1;
-            if (k.dKey.isPressed || k.rightArrowKey.isPressed) m.x += 1;
-            if (k.sKey.isPressed || k.downArrowKey.isPressed)  m.y -= 1;
-            if (k.wKey.isPressed || k.upArrowKey.isPressed)    m.y += 1;
-        }
-        #else
-        m = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
-        #endif
+        // --- input ---
+        Vector2 m = GetMove();
+        Vector3 dir;
 
-        Vector3 dir = new Vector3(m.x, 0, m.y);
+        if (cameraRelative && cameraTransform)
+        {
+            // project camera basis to XZ so Y doesn't tilt movement
+            Vector3 camFwd   = Vector3.ProjectOnPlane(cameraTransform.forward, Vector3.up).normalized;
+            Vector3 camRight = Vector3.ProjectOnPlane(cameraTransform.right,  Vector3.up).normalized;
+            dir = camRight * m.x + camFwd * m.y;
+        }
+        else
+        {
+            dir = new Vector3(m.x, 0f, m.y); // world axes
+        }
+
         if (dir.sqrMagnitude > 1f) dir.Normalize();
 
-        transform.position += dir * speed * Time.deltaTime;
+        // --- move ---
+        Vector3 p = transform.position + dir * speed * Time.deltaTime;
+        p.y = yLock;
 
-        if (dir.sqrMagnitude > 0.0001f)
+        // --- clamp ---
+        if (useMapBounds && MapBounds.I != null)
         {
-            var target = Quaternion.LookRotation(dir, Vector3.up);
-            transform.rotation = Quaternion.Slerp(transform.rotation, target, smoothTurn * Time.deltaTime);
+            p = MapBounds.I.ClampXZ(p, clampPadding);
         }
-
-        // am Boden halten
-        var p = transform.position; p.y = yLock;
-
-        // --- Bounds-Clamp basierend auf Plane-Größe ---
-        if (ground)
+        else if (ground)
         {
-            // Unity-Plane ist 10x10 bei Scale=1 → Hälfte = 5
-            float halfX = 5f * ground.localScale.x;
+            float halfX = 5f * ground.localScale.x; // Unity plane = 10x10
             float halfZ = 5f * ground.localScale.z;
-
             p.x = Mathf.Clamp(p.x, ground.position.x - halfX + margin, ground.position.x + halfX - margin);
             p.z = Mathf.Clamp(p.z, ground.position.z - halfZ + margin, ground.position.z + halfZ - margin);
         }
 
         transform.position = p;
+
+        // --- face move direction ---
+        if (dir.sqrMagnitude > 0.0001f)
+        {
+            var target = Quaternion.LookRotation(dir, Vector3.up);
+            transform.rotation = Quaternion.Slerp(transform.rotation, target, smoothTurn * Time.deltaTime);
+        }
     }
+
+#if ENABLE_INPUT_SYSTEM
+    Vector2 GetMove()
+    {
+        var k = Keyboard.current;
+        if (k == null) return Vector2.zero;
+        float x = (k.aKey.isPressed || k.leftArrowKey.isPressed ? -1f : 0f)
+                + (k.dKey.isPressed || k.rightArrowKey.isPressed ?  1f : 0f);
+        float y = (k.sKey.isPressed || k.downArrowKey.isPressed ? -1f : 0f)
+                + (k.wKey.isPressed || k.upArrowKey.isPressed   ?  1f : 0f);
+        return new Vector2(x, y);
+    }
+#else
+    Vector2 GetMove() => new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+#endif
 }
