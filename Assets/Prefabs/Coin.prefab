@@ -126,9 +126,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CoinPickup
   amount: 1
   debugLogs: 0
+  spinAxis: 0
+  customAxis: {x: 0, y: 1, z: 0}
   rotateSpeed: 120
+  spinInWorldSpace: 1
   bobAmplitude: 0.1
   bobSpeed: 2.5
+  randomizeBobPhase: 1
   pickupSfx: {fileID: 0}
   pickupVfx: {fileID: 0}
   destroyDelay: 0.05
