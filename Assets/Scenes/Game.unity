@@ -1181,6 +1181,38 @@ CanvasGroup:
   m_Interactable: 1
   m_BlocksRaycasts: 1
   m_IgnoreParentGroups: 0
+--- !u!1 &749540740
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 749540741}
+  m_Layer: 0
+  m_Name: PlayerVisual
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &749540741
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 749540740}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1760402061}
+  m_Father: {fileID: 1790092736}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &864614347
 GameObject:
   m_ObjectHideFlags: 3
@@ -2868,7 +2900,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1609836792}
-  m_Father: {fileID: 1790092736}
+  m_Father: {fileID: 749540741}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1790092731
 GameObject:
@@ -2887,8 +2919,8 @@ GameObject:
   - component: {fileID: 1790092739}
   - component: {fileID: 1790092740}
   - component: {fileID: 1790092741}
-  - component: {fileID: 1790092743}
   - component: {fileID: 1790092742}
+  - component: {fileID: 1790092743}
   m_Layer: 7
   m_Name: Player
   m_TagString: Player
@@ -2912,6 +2944,9 @@ MonoBehaviour:
   smoothTurn: 15
   cameraRelative: 1
   cameraTransform: {fileID: 519420032}
+  blockTurnWhenBack: 1
+  backpedalSpeedMul: 0.85
+  backThreshold: -0.15
   useMapBounds: 1
   clampPadding: 0.5
   ground: {fileID: 1415371088}
@@ -3008,8 +3043,8 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 1760402061}
   - {fileID: 1612532517}
+  - {fileID: 749540741}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!54 &1790092738
@@ -3151,6 +3186,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 542fccffeeab64d80ae8843d0350ed36, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AttackFX
+  visual: {fileID: 749540741}
   attackPivot: {fileID: 1760402061}
   slashTip: {fileID: 1609836792}
   hitVfx: {fileID: 3499230303906684193, guid: 844795493183a42a3bef552057827fbe, type: 3}
@@ -3163,6 +3199,7 @@ MonoBehaviour:
   leanAngle: 10
   squashAmt: 0.07
   hitMoment: 0.4
+  hitShake: 0.12
 --- !u!1 &1885382418
 GameObject:
   m_ObjectHideFlags: 0
