@@ -11,7 +11,13 @@ public class TopDownMover3D : MonoBehaviour
 
     [Header("Camera-relative")]
     public bool cameraRelative = true;
-    public Transform cameraTransform;           // assign Main Camera; auto-finds if null
+    public Transform cameraTransform; // assign Main Camera; auto-finds if null
+
+    [Header("Backpedal (no turning when going backwards)")]
+    public bool blockTurnWhenBack = true;     // <— wichtig
+    [Range(0f,1.0f)] public float backpedalSpeedMul = 0.85f; // optional langsamer rückwärts
+    [Tooltip("Wie stark 'rückwärts' sein muss, bis wir das Drehen blocken (-1..0).")]
+    public float backThreshold = -0.15f;      // Dot < -0.15 => rückwärts
 
     [Header("Bounds")]
     public bool useMapBounds = true;
@@ -34,12 +40,14 @@ public class TopDownMover3D : MonoBehaviour
         // --- input ---
         Vector2 m = GetMove();
         Vector3 dir;
+        Vector3 camFwd = Vector3.forward; // fallback
+        Vector3 camRight = Vector3.right; // fallback
 
         if (cameraRelative && cameraTransform)
         {
             // project camera basis to XZ so Y doesn't tilt movement
-            Vector3 camFwd   = Vector3.ProjectOnPlane(cameraTransform.forward, Vector3.up).normalized;
-            Vector3 camRight = Vector3.ProjectOnPlane(cameraTransform.right,  Vector3.up).normalized;
+            camFwd   = Vector3.ProjectOnPlane(cameraTransform.forward, Vector3.up).normalized;
+            camRight = Vector3.ProjectOnPlane(cameraTransform.right,  Vector3.up).normalized;
             dir = camRight * m.x + camFwd * m.y;
         }
         else
@@ -49,8 +57,16 @@ public class TopDownMover3D : MonoBehaviour
 
         if (dir.sqrMagnitude > 1f) dir.Normalize();
 
+        // Vorwärts-/Rückwärts-Anteil relativ zur Kamera (oder Welt)
+        float forwardDot =
+            cameraRelative ? Vector3.Dot(dir, camFwd)
+                           : dir.z; // Welt-z ist "vorwärts"
+
+        bool movingBack = blockTurnWhenBack && forwardDot < backThreshold;
+
         // --- move ---
-        Vector3 p = transform.position + dir * speed * Time.deltaTime;
+        float moveSpeed = speed * (movingBack ? backpedalSpeedMul : 1f);
+        Vector3 p = transform.position + dir * moveSpeed * Time.deltaTime;
         p.y = yLock;
 
         // --- clamp ---
@@ -65,15 +81,15 @@ public class TopDownMover3D : MonoBehaviour
             p.x = Mathf.Clamp(p.x, ground.position.x - halfX + margin, ground.position.x + halfX - margin);
             p.z = Mathf.Clamp(p.z, ground.position.z - halfZ + margin, ground.position.z + halfZ - margin);
         }
-
         transform.position = p;
 
         // --- face move direction ---
-        if (dir.sqrMagnitude > 0.0001f)
+        if (!movingBack && dir.sqrMagnitude > 0.0001f)
         {
             var target = Quaternion.LookRotation(dir, Vector3.up);
             transform.rotation = Quaternion.Slerp(transform.rotation, target, smoothTurn * Time.deltaTime);
         }
+        // else: beim Rückwärtslaufen NICHT drehen (Backpedal)
     }
 
 #if ENABLE_INPUT_SYSTEM
