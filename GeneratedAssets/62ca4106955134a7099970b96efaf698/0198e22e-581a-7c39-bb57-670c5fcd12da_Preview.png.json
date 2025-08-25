@@ -1,0 +1,11 @@
+{
+    "asset": "62ca4106955134a7099970b96efaf698",
+    "fileName": "0198e22e-581a-7c39-bb57-670c5fcd12da_Preview.png",
+    "prompt": "attack wave",
+    "negativePrompt": "",
+    "model": "575ecf67-4425-4939-97b9-5e138b8ee234",
+    "modelName": "Unity Texture2D",
+    "customSeed": 1977529172,
+    "w3CTraceId": "4d5599b607766ab1c1ecc5471fecd68f",
+    "refinementMode": "Generation"
+}
