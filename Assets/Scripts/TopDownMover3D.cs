@@ -11,13 +11,17 @@ public class TopDownMover3D : MonoBehaviour
 
     [Header("Camera-relative")]
     public bool cameraRelative = true;
-    public Transform cameraTransform; // assign Main Camera; auto-finds if null
+    public Transform cameraTransform; // auto: Camera.main
 
     [Header("Backpedal (no turning when going backwards)")]
-    public bool blockTurnWhenBack = true;     // <— wichtig
-    [Range(0f,1.0f)] public float backpedalSpeedMul = 0.85f; // optional langsamer rückwärts
+    public bool blockTurnWhenBack = true;
+    [Range(0f,1.0f)] public float backpedalSpeedMul = 0.85f;
     [Tooltip("Wie stark 'rückwärts' sein muss, bis wir das Drehen blocken (-1..0).")]
-    public float backThreshold = -0.15f;      // Dot < -0.15 => rückwärts
+    public float backThreshold = -0.15f;
+
+    [Header("During Attack")]
+    public bool lockTurnWhileSwinging = true;      // NEU: Drehung sperren beim Schlag
+    [Range(0f,1f)] public float swingMoveMul = 0.8f; // NEU: langsamer laufen beim Schlag
 
     [Header("Bounds")]
     public bool useMapBounds = true;
@@ -27,10 +31,12 @@ public class TopDownMover3D : MonoBehaviour
     public float margin = 0.5f;
 
     float yLock;
+    AttackFX fx; // NEU
 
     void Awake()
     {
         if (!cameraTransform && Camera.main) cameraTransform = Camera.main.transform;
+        fx = GetComponent<AttackFX>(); // AttackFX am Player
     }
 
     void Start() => yLock = transform.position.y;
@@ -45,27 +51,27 @@ public class TopDownMover3D : MonoBehaviour
 
         if (cameraRelative && cameraTransform)
         {
-            // project camera basis to XZ so Y doesn't tilt movement
             camFwd   = Vector3.ProjectOnPlane(cameraTransform.forward, Vector3.up).normalized;
             camRight = Vector3.ProjectOnPlane(cameraTransform.right,  Vector3.up).normalized;
             dir = camRight * m.x + camFwd * m.y;
         }
         else
         {
-            dir = new Vector3(m.x, 0f, m.y); // world axes
+            dir = new Vector3(m.x, 0f, m.y);
         }
 
         if (dir.sqrMagnitude > 1f) dir.Normalize();
 
-        // Vorwärts-/Rückwärts-Anteil relativ zur Kamera (oder Welt)
-        float forwardDot =
-            cameraRelative ? Vector3.Dot(dir, camFwd)
-                           : dir.z; // Welt-z ist "vorwärts"
-
+        // Vorwärts-/Rückwärts-Anteil relativ zur Kamera/Welt
+        float forwardDot = cameraRelative ? Vector3.Dot(dir, camFwd) : dir.z;
         bool movingBack = blockTurnWhenBack && forwardDot < backThreshold;
 
         // --- move ---
-        float moveSpeed = speed * (movingBack ? backpedalSpeedMul : 1f);
+        bool swinging = fx && fx.IsSwinging; // NEU
+        float moveSpeed = speed
+                        * (movingBack ? backpedalSpeedMul : 1f)
+                        * (swinging   ? swingMoveMul      : 1f);
+
         Vector3 p = transform.position + dir * moveSpeed * Time.deltaTime;
         p.y = yLock;
 
@@ -84,12 +90,12 @@ public class TopDownMover3D : MonoBehaviour
         transform.position = p;
 
         // --- face move direction ---
-        if (!movingBack && dir.sqrMagnitude > 0.0001f)
+        if (!movingBack && !(lockTurnWhileSwinging && swinging) && dir.sqrMagnitude > 0.0001f)
         {
             var target = Quaternion.LookRotation(dir, Vector3.up);
             transform.rotation = Quaternion.Slerp(transform.rotation, target, smoothTurn * Time.deltaTime);
         }
-        // else: beim Rückwärtslaufen NICHT drehen (Backpedal)
+        // else: beim Rückwärtslaufen oder während Swing NICHT drehen
     }
 
 #if ENABLE_INPUT_SYSTEM
