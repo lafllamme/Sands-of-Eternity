@@ -3,7 +3,7 @@ using UnityEngine.InputSystem;
 
 public class PlayerAttack : MonoBehaviour
 {
-    [Header("Attack")]
+    [Header("Gameplay")]
     public Key attackKey = Key.X;
     public int damage = 5;
     public float cooldown = 0.35f;
@@ -11,16 +11,28 @@ public class PlayerAttack : MonoBehaviour
     [Tooltip("Radius der Trefferkugel")]
     public float radius = 0.75f;
 
-    [Tooltip("Wie weit vor dem Spieler zentrieren wir die Kugel?")]
+    [Tooltip("Fallback-Distanz falls kein attackPoint/slashTip")]
     public float range = 1.25f;
 
-    [Tooltip("Optional: eigener Punkt für die Trefferkugel")]
+    [Tooltip("Optionaler Ursprung für die OverlapSphere")]
     public Transform attackPoint;
 
-    [Tooltip("Nur Gegner-Layer anhaken!")]
+    [Tooltip("Nur Enemy-Layer anhaken!")]
     public LayerMask enemyMask;
 
+    AttackFX fx;
     float lastAttack;
+
+    void Awake()
+    {
+        fx = GetComponent<AttackFX>();
+        if (fx) fx.OnHitMoment += DoDamage;           // Damage exakt im Swing
+    }
+
+    void OnDestroy()
+    {
+        if (fx) fx.OnHitMoment -= DoDamage;
+    }
 
     void Update()
     {
@@ -29,45 +41,46 @@ public class PlayerAttack : MonoBehaviour
         if (Time.time < lastAttack + cooldown) return;
 
         if (kb[attackKey].wasPressedThisFrame)
-            DoAttack();
+        {
+            lastAttack = Time.time;
+            if (fx) fx.PlaySwing(+1);                 // rechtsherum; bei Bedarf Richtung übergeben
+            else DoDamage();                          // Fallback ohne FX
+        }
     }
 
-    void DoAttack()
+    void DoDamage()
     {
-        lastAttack = Time.time;
+        Vector3 origin =
+            attackPoint ? attackPoint.position :
+            (fx && fx.slashTip ? fx.slashTip.position : transform.position + transform.forward * (range * 0.5f));
 
-        Vector3 origin = attackPoint
-            ? attackPoint.position
-            : transform.position + transform.forward * range * 0.5f;
+        var hits = Physics.OverlapSphere(origin, radius, enemyMask, QueryTriggerInteraction.Collide);
 
-        Collider[] hits = Physics.OverlapSphere(
-            origin, radius, enemyMask, QueryTriggerInteraction.Collide);
-
-        //Debug.Log($"[Attack] swing @ {origin} r={radius} hits={hits.Length} t={Time.time:F2}");
-
-        foreach (var hit in hits)
+        foreach (var h in hits)
         {
-            var h = hit.GetComponentInParent<Health>();
-            if (h != null)
+            var hp = h.GetComponentInParent<Health>();
+            if (hp == null) continue;
+
+            hp.TakeDamage(damage);
+
+            // Treffer-VFX optional über FX
+            if (fx)
             {
-                int before = h.CurrentHP;
-                h.TakeDamage(damage);
-                //Debug.Log($"[Attack] hit {hit.name} {before}->{h.CurrentHP}/{h.maxHP}");
-            }
-            else
-            {
-                //Debug.Log($"[Attack] {hit.name} has no Health");
+                Vector3 p = h.ClosestPoint(origin);
+                fx.HitAt(p);
             }
         }
     }
 
+#if UNITY_EDITOR
     void OnDrawGizmosSelected()
     {
-        Vector3 origin = attackPoint
-            ? attackPoint.position
-            : transform.position + transform.forward * range * 0.5f;
+        Vector3 origin =
+            attackPoint ? attackPoint.position :
+            (fx && fx.slashTip ? fx.slashTip.position : transform.position + transform.forward * (range * 0.5f));
 
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(origin, radius);
     }
+#endif
 }
