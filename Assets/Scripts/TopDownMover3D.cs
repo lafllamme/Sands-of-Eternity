@@ -11,43 +11,48 @@ public class TopDownMover3D : MonoBehaviour
 
     [Header("Camera-relative")]
     public bool cameraRelative = true;
-    public Transform cameraTransform; // auto: Camera.main
+    public Transform cameraTransform;
 
     [Header("Backpedal (no turning when going backwards)")]
     public bool blockTurnWhenBack = true;
     [Range(0f,1.0f)] public float backpedalSpeedMul = 0.85f;
-    [Tooltip("Wie stark 'rückwärts' sein muss, bis wir das Drehen blocken (-1..0).")]
     public float backThreshold = -0.15f;
 
     [Header("During Attack")]
-    public bool lockTurnWhileSwinging = true;      // NEU: Drehung sperren beim Schlag
-    [Range(0f,1f)] public float swingMoveMul = 0.8f; // NEU: langsamer laufen beim Schlag
+    public bool lockTurnWhileSwinging = true;
+    [Range(0f,1f)] public float swingMoveMul = 0.8f;
 
     [Header("Bounds")]
     public bool useMapBounds = true;
     public float clampPadding = 0.5f;
-    [Tooltip("Legacy plane clamp (used if MapBounds not present or useMapBounds = false).")]
     public Transform ground;
     public float margin = 0.5f;
 
+    // NEW
+    Animator anim;                   // Animator sitzt auf dem LowPoly-Child
+    static readonly int IDSpeed = Animator.StringToHash("speed");
+
     float yLock;
-    AttackFX fx; // NEU
+    AttackFX fx;
 
     void Awake()
     {
         if (!cameraTransform && Camera.main) cameraTransform = Camera.main.transform;
-        fx = GetComponent<AttackFX>(); // AttackFX am Player
+        fx = GetComponent<AttackFX>();
+
+        // Animator im Kind suchen (LowPoly)
+        anim = GetComponentInChildren<Animator>();
+        if (!anim) Debug.LogWarning("No Animator found under Player -> PlayerVisual -> LowPoly");
     }
 
     void Start() => yLock = transform.position.y;
 
     void Update()
     {
-        // --- input ---
+        // --- input & camera-relative dir ---
         Vector2 m = GetMove();
+        Vector3 camFwd = Vector3.forward, camRight = Vector3.right;
         Vector3 dir;
-        Vector3 camFwd = Vector3.forward; // fallback
-        Vector3 camRight = Vector3.right; // fallback
 
         if (cameraRelative && cameraTransform)
         {
@@ -55,47 +60,47 @@ public class TopDownMover3D : MonoBehaviour
             camRight = Vector3.ProjectOnPlane(cameraTransform.right,  Vector3.up).normalized;
             dir = camRight * m.x + camFwd * m.y;
         }
-        else
-        {
-            dir = new Vector3(m.x, 0f, m.y);
-        }
+        else dir = new Vector3(m.x, 0f, m.y);
 
         if (dir.sqrMagnitude > 1f) dir.Normalize();
 
-        // Vorwärts-/Rückwärts-Anteil relativ zur Kamera/Welt
         float forwardDot = cameraRelative ? Vector3.Dot(dir, camFwd) : dir.z;
-        bool movingBack = blockTurnWhenBack && forwardDot < backThreshold;
+        bool movingBack  = blockTurnWhenBack && forwardDot < backThreshold;
+
+        bool swinging = fx && fx.IsSwinging;
+        float moveSpeed = speed * (movingBack ? backpedalSpeedMul : 1f) * (swinging ? swingMoveMul : 1f);
 
         // --- move ---
-        bool swinging = fx && fx.IsSwinging; // NEU
-        float moveSpeed = speed
-                        * (movingBack ? backpedalSpeedMul : 1f)
-                        * (swinging   ? swingMoveMul      : 1f);
-
         Vector3 p = transform.position + dir * moveSpeed * Time.deltaTime;
         p.y = yLock;
 
-        // --- clamp ---
         if (useMapBounds && MapBounds.I != null)
-        {
             p = MapBounds.I.ClampXZ(p, clampPadding);
-        }
         else if (ground)
         {
-            float halfX = 5f * ground.localScale.x; // Unity plane = 10x10
-            float halfZ = 5f * ground.localScale.z;
+            float halfX = 5f * ground.localScale.x, halfZ = 5f * ground.localScale.z;
             p.x = Mathf.Clamp(p.x, ground.position.x - halfX + margin, ground.position.x + halfX - margin);
             p.z = Mathf.Clamp(p.z, ground.position.z - halfZ + margin, ground.position.z + halfZ - margin);
         }
         transform.position = p;
 
-        // --- face move direction ---
+        // --- rotate ---
         if (!movingBack && !(lockTurnWhileSwinging && swinging) && dir.sqrMagnitude > 0.0001f)
         {
             var target = Quaternion.LookRotation(dir, Vector3.up);
             transform.rotation = Quaternion.Slerp(transform.rotation, target, smoothTurn * Time.deltaTime);
         }
-        // else: beim Rückwärtslaufen oder während Swing NICHT drehen
+
+        // --- ANIMATOR: speed 0..1 setzen (mit Dämpfung) ---
+        if (anim)
+        {
+            // wie stark bewegen wir uns gerade relativ zum vollen Stick/Key-Einschlag?
+            float inputMag = Mathf.Clamp01(m.magnitude);  // 0..1 von WASD
+            // optional leicht runterdrehen beim Rückwärtslaufen
+            if (movingBack) inputMag *= 0.6f;
+
+            anim.SetFloat(IDSpeed, inputMag, 0.1f, Time.deltaTime); // 0.1f = Damp Time
+        }
     }
 
 #if ENABLE_INPUT_SYSTEM
