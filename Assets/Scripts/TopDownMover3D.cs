@@ -28,8 +28,14 @@ public class TopDownMover3D : MonoBehaviour
     public Transform ground;
     public float margin = 0.5f;
 
-    // NEW
-    Animator anim;                   // Animator sitzt auf dem LowPoly-Child
+    // -------- Animation Smoothing --------
+    [Header("Animation Smoothing")]
+    [Range(0f, 2f)] public float mobility = 1.0f;     // 0 = träge, 1 = normal, 2 = sehr agil
+    [Range(0.1f, 3f)] public float walkToRunSeconds = 1.2f; // 0->1 (bei mobility=1)
+    [Range(0.05f, 1.5f)] public float stopSeconds     = 0.25f; // 1->0 (bei mobility=1)
+    float animSpeedParam = 0f; // geglätteter 0..1-Wert
+
+    Animator anim;
     static readonly int IDSpeed = Animator.StringToHash("speed");
 
     float yLock;
@@ -39,8 +45,6 @@ public class TopDownMover3D : MonoBehaviour
     {
         if (!cameraTransform && Camera.main) cameraTransform = Camera.main.transform;
         fx = GetComponent<AttackFX>();
-
-        // Animator im Kind suchen (LowPoly)
         anim = GetComponentInChildren<Animator>();
         if (!anim) Debug.LogWarning("No Animator found under Player -> PlayerVisual -> LowPoly");
     }
@@ -73,9 +77,7 @@ public class TopDownMover3D : MonoBehaviour
         // --- move ---
         Vector3 p = transform.position + dir * moveSpeed * Time.deltaTime;
         p.y = yLock;
-
-        if (useMapBounds && MapBounds.I != null)
-            p = MapBounds.I.ClampXZ(p, clampPadding);
+        if (useMapBounds && MapBounds.I != null) p = MapBounds.I.ClampXZ(p, clampPadding);
         else if (ground)
         {
             float halfX = 5f * ground.localScale.x, halfZ = 5f * ground.localScale.z;
@@ -91,15 +93,21 @@ public class TopDownMover3D : MonoBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation, target, smoothTurn * Time.deltaTime);
         }
 
-        // --- ANIMATOR: speed 0..1 setzen (mit Dämpfung) ---
+        // --- ANIMATOR: geglätteten speed 0..1 setzen ---
         if (anim)
         {
-            // wie stark bewegen wir uns gerade relativ zum vollen Stick/Key-Einschlag?
-            float inputMag = Mathf.Clamp01(m.magnitude);  // 0..1 von WASD
-            // optional leicht runterdrehen beim Rückwärtslaufen
-            if (movingBack) inputMag *= 0.6f;
+            float target = Mathf.Clamp01(m.magnitude); // 0..1 aus WASD
+            if (movingBack) target *= 0.6f;
 
-            anim.SetFloat(IDSpeed, inputMag, 0.1f, Time.deltaTime); // 0.1f = Damp Time
+            // Mobility skaliert die „Beschleunigung“ (Rate in Einheiten pro Sekunde)
+            float upRate   = (mobility <= 0f ? 0.0001f : mobility) / Mathf.Max(0.0001f, walkToRunSeconds);
+            float downRate = (mobility <= 0f ? 0.0001f : mobility) / Mathf.Max(0.0001f, stopSeconds);
+
+            float rate = (target > animSpeedParam) ? upRate : downRate;
+            animSpeedParam = Mathf.MoveTowards(animSpeedParam, target, rate * Time.deltaTime);
+
+            // Kein extra Damp-Time im Animator verwenden – wir glätten selbst:
+            anim.SetFloat(IDSpeed, animSpeedParam);
         }
     }
 

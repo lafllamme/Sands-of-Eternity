@@ -3046,6 +3046,9 @@ MonoBehaviour:
   clampPadding: 0.5
   ground: {fileID: 1415371088}
   margin: 0.5
+  mobility: 1.2
+  walkToRunSeconds: 1.5
+  stopSeconds: 0.4
 --- !u!136 &1790092733
 CapsuleCollider:
   m_ObjectHideFlags: 0
