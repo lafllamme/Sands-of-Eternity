@@ -15,12 +15,12 @@ public class TopDownMover3D : MonoBehaviour
 
     [Header("Backpedal (no turning when going backwards)")]
     public bool blockTurnWhenBack = true;
-    [Range(0f,1.0f)] public float backpedalSpeedMul = 0.85f;
+    [Range(0f, 1.0f)] public float backpedalSpeedMul = 0.85f;
     public float backThreshold = -0.15f;
 
     [Header("During Attack")]
     public bool lockTurnWhileSwinging = true;
-    [Range(0f,1f)] public float swingMoveMul = 0.8f;
+    [Range(0f, 1f)] public float swingMoveMul = 0.8f;
 
     [Header("Bounds")]
     public bool useMapBounds = true;
@@ -30,22 +30,30 @@ public class TopDownMover3D : MonoBehaviour
 
     // -------- Animation Smoothing --------
     [Header("Animation Smoothing")]
-    [Range(0f, 2f)] public float mobility = 1.0f;     // 0 = träge, 1 = normal, 2 = sehr agil
-    [Range(0.1f, 3f)] public float walkToRunSeconds = 1.2f; // 0->1 (bei mobility=1)
-    [Range(0.05f, 1.5f)] public float stopSeconds     = 0.25f; // 1->0 (bei mobility=1)
-    float animSpeedParam = 0f; // geglätteter 0..1-Wert
+    [Range(0f, 2f)] public float mobility = 1.0f;              // 0 = träge, 1 = normal, 2 = sehr agil
+    [Range(0.1f, 3f)] public float walkToRunSeconds = 1.2f;     // 0->1 (bei mobility=1)
+    [Range(0.05f, 1.5f)] public float stopSeconds     = 0.25f;  // 1->0 (bei mobility=1)
+    float animSpeedParam = 0f;                                   // geglätteter 0..1-Wert
+
+    [Header("Air Tuning")]
+    public float airControlMul = 0.6f;      // Steuerung in der Luft (0..1), nur für Bewegung
+    public bool  lockTurnWhileAir = false;  // in der Luft nicht drehen
 
     Animator anim;
     static readonly int IDSpeed = Animator.StringToHash("speed");
 
     float yLock;
     AttackFX fx;
+    PlayerJump jump; // Referenz auf dein Jump-Script
 
     void Awake()
     {
         if (!cameraTransform && Camera.main) cameraTransform = Camera.main.transform;
-        fx = GetComponent<AttackFX>();
+
+        fx   = GetComponent<AttackFX>();
         anim = GetComponentInChildren<Animator>();
+        jump = GetComponent<PlayerJump>();
+
         if (!anim) Debug.LogWarning("No Animator found under Player -> PlayerVisual -> LowPoly");
     }
 
@@ -71,12 +79,20 @@ public class TopDownMover3D : MonoBehaviour
         float forwardDot = cameraRelative ? Vector3.Dot(dir, camFwd) : dir.z;
         bool movingBack  = blockTurnWhenBack && forwardDot < backThreshold;
 
-        bool swinging = fx && fx.IsSwinging;
-        float moveSpeed = speed * (movingBack ? backpedalSpeedMul : 1f) * (swinging ? swingMoveMul : 1f);
+        bool swinging    = fx && fx.IsSwinging;
+        bool isAir       = jump && jump.IsAir;
+
+        float moveSpeed = speed
+                        * (movingBack ? backpedalSpeedMul : 1f)
+                        * (swinging ? swingMoveMul : 1f);
 
         // --- move ---
-        Vector3 p = transform.position + dir * moveSpeed * Time.deltaTime;
+        float controlMul = 1f;
+        if (isAir) controlMul = (jump.canMoveInAir ? Mathf.Clamp01(airControlMul) : 0f);
+
+        Vector3 p = transform.position + dir * (moveSpeed * controlMul) * Time.deltaTime;
         p.y = yLock;
+
         if (useMapBounds && MapBounds.I != null) p = MapBounds.I.ClampXZ(p, clampPadding);
         else if (ground)
         {
@@ -87,7 +103,10 @@ public class TopDownMover3D : MonoBehaviour
         transform.position = p;
 
         // --- rotate ---
-        if (!movingBack && !(lockTurnWhileSwinging && swinging) && dir.sqrMagnitude > 0.0001f)
+        if (!movingBack
+            && !(lockTurnWhileSwinging && swinging)
+            && !(lockTurnWhileAir && isAir)
+            && dir.sqrMagnitude > 0.0001f)
         {
             var target = Quaternion.LookRotation(dir, Vector3.up);
             transform.rotation = Quaternion.Slerp(transform.rotation, target, smoothTurn * Time.deltaTime);

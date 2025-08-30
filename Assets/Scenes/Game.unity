@@ -1733,6 +1733,11 @@ MonoBehaviour:
   CameraRadius: 0.2
   DampingIntoCollision: 0
   DampingFromCollision: 2
+--- !u!95 &1022217699 stripped
+Animator:
+  m_CorrespondingSourceObject: {fileID: 7983505588905401017, guid: dd3bb7cef711fa344bd6e9464b36b833, type: 3}
+  m_PrefabInstance: {fileID: 857065012}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1109525601
 GameObject:
   m_ObjectHideFlags: 3
@@ -3014,6 +3019,7 @@ GameObject:
   - component: {fileID: 1790092741}
   - component: {fileID: 1790092742}
   - component: {fileID: 1790092743}
+  - component: {fileID: 1790092744}
   m_Layer: 7
   m_Name: Player
   m_TagString: Player
@@ -3049,6 +3055,8 @@ MonoBehaviour:
   mobility: 1.2
   walkToRunSeconds: 1.5
   stopSeconds: 0.4
+  airControlMul: 0.6
+  lockTurnWhileAir: 0
 --- !u!136 &1790092733
 CapsuleCollider:
   m_ObjectHideFlags: 0
@@ -3298,6 +3306,29 @@ MonoBehaviour:
   squashAmt: 0.07
   hitMoment: 0.4
   hitShake: 0.12
+--- !u!114 &1790092744
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1790092731}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 65f3c2e10e423489497c4df8877984d4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerJump
+  visualRoot: {fileID: 749540741}
+  animator: {fileID: 1022217699}
+  jumpTrigger: jump
+  landTrigger: 
+  height: 2.6
+  duration: 0.75
+  landSquash: 0.1
+  squashTime: 0.1
+  cooldown: 0.05
+  canMoveInAir: 1
+  lockAttackWhileAir: 0
 --- !u!1 &1885382418
 GameObject:
   m_ObjectHideFlags: 0
