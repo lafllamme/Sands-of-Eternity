@@ -3320,12 +3320,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerJump
   visualRoot: {fileID: 749540741}
   animator: {fileID: 1022217699}
+  airBool: air
   jumpTrigger: jump
   landTrigger: 
-  height: 2.6
-  duration: 0.75
-  landSquash: 0.1
-  squashTime: 0.1
+  height: 2.4
+  duration: 0.7
+  maxJumps: 2
+  secondJumpHeightMul: 1.2
+  secondJumpDurationMul: 1.2
+  landSquash: 0.05
+  squashTime: 0.05
   cooldown: 0.05
   canMoveInAir: 1
   lockAttackWhileAir: 0

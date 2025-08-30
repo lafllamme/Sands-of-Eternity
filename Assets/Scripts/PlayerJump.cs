@@ -11,13 +11,18 @@ public class PlayerJump : MonoBehaviour
     public Animator animator;                 // LowPoly-Animator (optional auto-find)
 
     [Header("Animator parameters")]
-    public string airBool = "air";            // bool im Animator
-    public string jumpTrigger = "jump";       // optional
-    public string landTrigger = "";           // optional (leer lassen, wenn nicht vorhanden)
+    public string airBool = "air";            // Bool im Animator
+    public string jumpTrigger = "jump";       // Trigger für Jump/DoubleJump
+    public string landTrigger = "";           // optional
 
-    [Header("Jump shape")]
+    [Header("Jump shape (1. Sprung)")]
     public float height = 1.1f;
     public float duration = 0.5f;
+
+    [Header("Extra Jumps")]
+    public int   maxJumps = 2;                // 1 = Single, 2 = Double Jump
+    public float secondJumpHeightMul   = 1.25f;
+    public float secondJumpDurationMul = 0.90f;
 
     [Header("Landing FX")]
     public float landSquash = 0.08f;
@@ -25,7 +30,7 @@ public class PlayerJump : MonoBehaviour
     public float cooldown = 0.1f;
 
     [Header("Air control")]
-    public bool canMoveInAir = true;          // vom Mover benutzt
+    public bool canMoveInAir = true;
     public bool lockAttackWhileAir = false;
 
     public bool IsAir { get; private set; }
@@ -34,6 +39,10 @@ public class PlayerJump : MonoBehaviour
     float lastJumpEnd = -999f;
 
     int airHash, jumpHash, landHash;
+
+    // Runtime
+    int jumpsLeft = 0;
+    bool requestExtraJump = false;
 
     void Awake()
     {
@@ -51,7 +60,7 @@ public class PlayerJump : MonoBehaviour
         jumpHash = !string.IsNullOrEmpty(jumpTrigger) ? Animator.StringToHash(jumpTrigger) : 0;
         landHash = !string.IsNullOrEmpty(landTrigger) ? Animator.StringToHash(landTrigger) : 0;
 
-        SetAir(false); // nicht in Air starten
+        SetAir(false);
     }
 
     void OnDisable() => SetAir(false);
@@ -69,40 +78,81 @@ public class PlayerJump : MonoBehaviour
 
     public bool TryJump()
     {
-        if (IsAir) return false;
-        if (Time.time < lastJumpEnd + cooldown) return false;
-        if (!isActiveAndEnabled) return false;
+        // Start aus Boden
+        if (!IsAir)
+        {
+            if (Time.time < lastJumpEnd + cooldown) return false;
+            jumpsLeft = Mathf.Max(0, maxJumps - 1); // den ersten Sprung verbrauchen wir jetzt
+            requestExtraJump = false;
+            StartCoroutine(JumpCo());
+            return true;
+        }
 
-        StartCoroutine(JumpCo());
-        return true;
+        // Extra-Sprung in der Luft
+        if (IsAir && jumpsLeft > 0)
+        {
+            jumpsLeft--;
+            requestExtraJump = true; // Coroutine picked das auf und startet neuen Bogen
+            return true;
+        }
+
+        return false;
     }
 
     IEnumerator JumpCo()
     {
         IsAir = true;
         SetAir(true);
-        TrySetTrigger(jumpHash);
 
-        float t = 0f;
-        while (t < duration)
+        float startH = CurrentOffsetY();
+        int arcIndex = 0; // 0=erster, 1=zweiter, ...
+
+        // Eine oder mehrere Bögen, je nach Extra-Jumps
+        for (;;)
         {
-            t += Time.deltaTime;
-            float u = Mathf.Clamp01(t / duration);   // 0..1
-            float x = (u - 0.5f) * 2f;               // -1..1
-            float h = (1f - x * x) * height;         // Parabel 0..1..0
-            if (visualRoot) visualRoot.localPosition = baseLocalPos + Vector3.up * h;
-            yield return null;
+            float H = (arcIndex == 0) ? height   : height   * secondJumpHeightMul;
+            float D = (arcIndex == 0) ? duration : duration * secondJumpDurationMul;
+
+            // Trigger (gleich für Double Jump – falls du einen extra Double-Anim hast, kannst du hier umschalten)
+            TrySetTrigger(jumpHash);
+
+            float t = 0f;
+            bool restartArc = false;
+
+            while (t < D)
+            {
+                t += Time.deltaTime;
+
+                // Double/Triple Jump angefordert? -> neuen Bogen nahtlos ab aktueller Höhe starten
+                if (requestExtraJump)
+                {
+                    requestExtraJump = false;
+                    startH  = CurrentOffsetY(); // rebase
+                    arcIndex++;
+                    restartArc = true;
+                    break; // inner loop verlassen, nächster Bogen
+                }
+
+                float u = Mathf.Clamp01(t / D);
+                // Start bei aktueller Höhe, hump on top, Ende wieder bei 0
+                float h = startH * (1f - u) + Parabola(u) * H;
+                SetOffsetY(h);
+                yield return null;
+            }
+
+            if (restartArc) continue; // nächster Bogen (Double/Triple)
+            break;                    // fertig: wir sind gelandet (h≈0)
         }
 
         // Landen
         TrySetTrigger(landHash);
-        if (visualRoot) visualRoot.localPosition = baseLocalPos;
+        SetOffsetY(0f);
 
-        // >>> WICHTIG: ab hier sofort zurück in den Base-Layer
+        // sofort zurück in den Base-Layer
         IsAir = false;
         SetAir(false);
 
-        // kleiner Squash (läuft jetzt über Idle/Locomotion weiter)
+        // Squash läuft während Idle/Locomotion weiter
         if (landSquash > 0f && visualRoot)
         {
             Vector3 s0 = baseLocalScale;
@@ -119,6 +169,23 @@ public class PlayerJump : MonoBehaviour
         }
 
         lastJumpEnd = Time.time;
+        jumpsLeft = 0;
+    }
+
+    // ------- helpers -------
+    float CurrentOffsetY() => visualRoot ? (visualRoot.localPosition.y - baseLocalPos.y) : 0f;
+
+    void SetOffsetY(float y)
+    {
+        if (!visualRoot) return;
+        var p = baseLocalPos; p.y += y;
+        visualRoot.localPosition = p;
+    }
+
+    static float Parabola(float u)
+    {
+        float x = (u - 0.5f) * 2f; // -1..1
+        return 1f - x * x;         // 0..1..0
     }
 
     void SetAir(bool v)
