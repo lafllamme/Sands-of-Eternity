@@ -7,20 +7,20 @@ using UnityEngine.InputSystem;
 public class PlayerJump : MonoBehaviour
 {
     [Header("Visual root (wird angehoben)")]
-    public Transform visualRoot;              // z.B. PlayerVisual
-    public Animator animator;                 // LowPoly-Animator (optional auto-find)
+    public Transform visualRoot;              
+    public Animator animator;                 
 
     [Header("Animator parameters")]
-    public string airBool = "air";            // Bool im Animator
-    public string jumpTrigger = "jump";       // Trigger für Jump/DoubleJump
-    public string landTrigger = "";           // optional
+    public string airBool = "air";            
+    public string jumpTrigger = "jump";       
+    public string landTrigger = "land";       // <— Default hilft beim Neu-Anlegen
 
     [Header("Jump shape (1. Sprung)")]
     public float height = 1.1f;
     public float duration = 0.5f;
 
     [Header("Extra Jumps")]
-    public int   maxJumps = 2;                // 1 = Single, 2 = Double Jump
+    public int   maxJumps = 2;                
     public float secondJumpHeightMul   = 1.25f;
     public float secondJumpDurationMul = 0.90f;
 
@@ -34,7 +34,7 @@ public class PlayerJump : MonoBehaviour
     public bool lockAttackWhileAir = false;
 
     public bool IsAir { get; private set; }
-    public float CurrentHeight { get; private set; } // <-- neu
+    public float CurrentHeight { get; private set; }
 
     Vector3 baseLocalPos, baseLocalScale;
     float lastJumpEnd = -999f;
@@ -45,6 +45,8 @@ public class PlayerJump : MonoBehaviour
     int  jumpsLeft = 0;
     bool requestExtraJump = false;
 
+    CharacterController cc; // <— für echtes Grounded
+
     void Awake()
     {
         if (!visualRoot)
@@ -53,6 +55,7 @@ public class PlayerJump : MonoBehaviour
             if (t) visualRoot = t;
         }
         if (!animator) animator = GetComponentInChildren<Animator>();
+        cc = GetComponent<CharacterController>();
 
         baseLocalPos   = visualRoot ? visualRoot.localPosition : Vector3.zero;
         baseLocalScale = visualRoot ? visualRoot.localScale    : Vector3.one;
@@ -108,7 +111,7 @@ public class PlayerJump : MonoBehaviour
         IsAir = true;
         SetAir(true);
 
-        float startH = CurrentHeight; // ab aktueller Höhe
+        float startH = CurrentHeight;
         int arcIndex = 0;
 
         for (;;)
@@ -135,7 +138,7 @@ public class PlayerJump : MonoBehaviour
                 }
 
                 float u = Mathf.Clamp01(t / D);
-                float h = startH * (1f - u) + Parabola(u) * H; // 0..H..0 über aktuelle Höhe
+                float h = startH * (1f - u) + Parabola(u) * H; // 0..H..0
                 SetOffsetY(h);
                 yield return null;
             }
@@ -144,13 +147,27 @@ public class PlayerJump : MonoBehaviour
             break;
         }
 
-        // Landen
+        // --- Freefall-Phase: NICHT sofort landen ---
+        IsAir = false; // Mover übernimmt die Schwerkraft & "air" Verwaltung
+        // Fürs Animieren können wir 'air' schon oben lassen:
+        if (animator && airHash != 0 && HasParam(airHash))
+            animator.SetBool(airHash, true);
+
+        // Auf echten Bodenkontakt warten (mit CC)
+        if (cc)
+        {
+            yield return null; // eine Frame-Gnade
+            while (!cc.isGrounded) yield return null;
+        }
+
+        // Jetzt WIRKLICH gelandet -> Land-Trigger feuern
         TrySetTrigger(landHash);
         SetOffsetY(0f);
 
-        IsAir = false;
-        SetAir(false);
+        if (animator && airHash != 0 && HasParam(airHash))
+            animator.SetBool(airHash, false);
 
+        // Squash während Idle/Locomotion
         if (landSquash > 0f && visualRoot)
         {
             Vector3 s0 = baseLocalScale;
@@ -173,7 +190,7 @@ public class PlayerJump : MonoBehaviour
     // ------- helpers -------
     void SetOffsetY(float y)
     {
-        CurrentHeight = y; // <-- wichtig für den CC
+        CurrentHeight = y;
         if (!visualRoot) return;
         var p = baseLocalPos; p.y += y;
         visualRoot.localPosition = p;
@@ -193,7 +210,8 @@ public class PlayerJump : MonoBehaviour
 
     void TrySetTrigger(int hash)
     {
-        if (animator && hash != 0 && HasParam(hash))
+        if (hash == 0) return;
+        if (animator && HasParam(hash))
             animator.SetTrigger(hash);
     }
 
