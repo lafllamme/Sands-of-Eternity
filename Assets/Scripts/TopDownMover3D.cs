@@ -22,110 +22,136 @@ public class TopDownMover3D : MonoBehaviour
     public bool lockTurnWhileSwinging = true;
     [Range(0f, 1f)] public float swingMoveMul = 0.8f;
 
-    [Header("Bounds")]
+    [Header("Bounds (optional outer clamp)")]
     public bool useMapBounds = true;
-    public float clampPadding = 0.5f;
-    public Transform ground;
+    public float clampPadding = 0.5f;    // Puffer zum Rand
+    public Transform ground;             // nur Fallback, wenn kein MapBounds vorhanden
     public float margin = 0.5f;
 
-    // -------- Animation Smoothing --------
     [Header("Animation Smoothing")]
-    [Range(0f, 2f)] public float mobility = 1.0f;              // 0 = träge, 1 = normal, 2 = sehr agil
-    [Range(0.1f, 3f)] public float walkToRunSeconds = 1.2f;     // 0->1 (bei mobility=1)
-    [Range(0.05f, 1.5f)] public float stopSeconds     = 0.25f;  // 1->0 (bei mobility=1)
-    float animSpeedParam = 0f;                                   // geglätteter 0..1-Wert
+    [Range(0f, 2f)] public float mobility = 1.0f;
+    [Range(0.1f, 3f)] public float walkToRunSeconds = 1.2f;
+    [Range(0.05f, 1.5f)] public float stopSeconds = 0.25f;
+    float animSpeedParam = 0f;
 
     [Header("Air Tuning")]
-    public float airControlMul = 0.6f;      // Steuerung in der Luft (0..1), nur für Bewegung
-    public bool  lockTurnWhileAir = false;  // in der Luft nicht drehen
+    [Range(0f,1f)] public float airControlMul = 0.6f; // 0..1 horizontale Steuerung in der Luft
+    public bool  lockTurnWhileAir = false;
 
+    // --- intern ---
     Animator anim;
     static readonly int IDSpeed = Animator.StringToHash("speed");
 
-    float yLock;
     AttackFX fx;
-    PlayerJump jump; // Referenz auf dein Jump-Script
+    PlayerJump jump;                 // dein Jump-Script
+    CharacterController controller;  // kinematische Kollision
+
+    const float StickToGround = 5f;  // leichter Down-Pull, damit CC grounded bleibt
+
+    float yLockFallback;
 
     void Awake()
     {
         if (!cameraTransform && Camera.main) cameraTransform = Camera.main.transform;
 
-        fx   = GetComponent<AttackFX>();
-        anim = GetComponentInChildren<Animator>();
-        jump = GetComponent<PlayerJump>();
+        fx         = GetComponent<AttackFX>();
+        anim       = GetComponentInChildren<Animator>();
+        jump       = GetComponent<PlayerJump>();
+        controller = GetComponent<CharacterController>();
 
         if (!anim) Debug.LogWarning("No Animator found under Player -> PlayerVisual -> LowPoly");
     }
 
-    void Start() => yLock = transform.position.y;
+    void Start()
+    {
+        yLockFallback = transform.position.y;
+    }
 
     void Update()
     {
-        // --- input & camera-relative dir ---
+        // --- Input & kamerarelative Richtung ---
         Vector2 m = GetMove();
         Vector3 camFwd = Vector3.forward, camRight = Vector3.right;
-        Vector3 dir;
 
         if (cameraRelative && cameraTransform)
         {
             camFwd   = Vector3.ProjectOnPlane(cameraTransform.forward, Vector3.up).normalized;
             camRight = Vector3.ProjectOnPlane(cameraTransform.right,  Vector3.up).normalized;
-            dir = camRight * m.x + camFwd * m.y;
         }
-        else dir = new Vector3(m.x, 0f, m.y);
 
+        Vector3 dir = camRight * m.x + camFwd * m.y;
         if (dir.sqrMagnitude > 1f) dir.Normalize();
 
         float forwardDot = cameraRelative ? Vector3.Dot(dir, camFwd) : dir.z;
         bool movingBack  = blockTurnWhenBack && forwardDot < backThreshold;
 
-        bool swinging    = fx && fx.IsSwinging;
-        bool isAir       = jump && jump.IsAir;
+        bool swinging = fx && fx.IsSwinging;
+        bool isAir    = jump && jump.IsAir;
 
-        float moveSpeed = speed
-                        * (movingBack ? backpedalSpeedMul : 1f)
-                        * (swinging ? swingMoveMul : 1f);
+        // Bewegungsskalierung
+        float moveMul = 1f;
+        if (movingBack) moveMul *= backpedalSpeedMul;
+        if (swinging)   moveMul *= swingMoveMul;
+        if (isAir)      moveMul *= (jump != null && jump.canMoveInAir ? Mathf.Clamp01(airControlMul) : 0f);
 
-        // --- move ---
-        float controlMul = 1f;
-        if (isAir) controlMul = (jump.canMoveInAir ? Mathf.Clamp01(airControlMul) : 0f);
+        float moveSpeed = speed * moveMul;
 
-        Vector3 p = transform.position + dir * (moveSpeed * controlMul) * Time.deltaTime;
-        p.y = yLock;
-
-        if (useMapBounds && MapBounds.I != null) p = MapBounds.I.ClampXZ(p, clampPadding);
-        else if (ground)
+        // --- Move (CharacterController bevorzugt) ---
+        if (controller)
         {
-            float halfX = 5f * ground.localScale.x, halfZ = 5f * ground.localScale.z;
-            p.x = Mathf.Clamp(p.x, ground.position.x - halfX + margin, ground.position.x + halfX - margin);
-            p.z = Mathf.Clamp(p.z, ground.position.z - halfZ + margin, ground.position.z + halfZ - margin);
-        }
-        transform.position = p;
+            // CC bewegt sich in Weltkoords; kleiner Down-Pull hält ihn am Boden
+            Vector3 velocity = dir * moveSpeed + Vector3.down * StickToGround;
+            controller.Move(velocity * Time.deltaTime);
 
-        // --- rotate ---
-        if (!movingBack
-            && !(lockTurnWhileSwinging && swinging)
-            && !(lockTurnWhileAir && isAir)
-            && dir.sqrMagnitude > 0.0001f)
+            // Rechteckiger Außenrahmen (nur X/Z clampen)
+            if (useMapBounds)
+            {
+                Vector3 p = transform.position;
+                if (MapBounds.I != null) p = MapBounds.I.ClampXZ(p, clampPadding);
+                else if (ground)
+                {
+                    float halfX = 5f * ground.localScale.x, halfZ = 5f * ground.localScale.z;
+                    p.x = Mathf.Clamp(p.x, ground.position.x - halfX + margin, ground.position.x + halfX - margin);
+                    p.z = Mathf.Clamp(p.z, ground.position.z - halfZ + margin, ground.position.z + halfZ - margin);
+                }
+                // Y dem Controller überlassen
+                p.y = transform.position.y;
+                transform.position = p;
+            }
+        }
+        else
+        {
+            // Fallback ohne Physik (wie vorher)
+            Vector3 p = transform.position + dir * (moveSpeed) * Time.deltaTime;
+            p.y = yLockFallback;
+            if (useMapBounds && MapBounds.I != null) p = MapBounds.I.ClampXZ(p, clampPadding);
+            else if (ground)
+            {
+                float halfX = 5f * ground.localScale.x, halfZ = 5f * ground.localScale.z;
+                p.x = Mathf.Clamp(p.x, ground.position.x - halfX + margin, ground.position.x + halfX - margin);
+                p.z = Mathf.Clamp(p.z, ground.position.z - halfZ + margin, ground.position.z + halfZ - margin);
+            }
+            transform.position = p;
+        }
+
+        // --- Drehen ---
+        if (!movingBack && !(lockTurnWhileSwinging && swinging) && !(lockTurnWhileAir && isAir) && dir.sqrMagnitude > 0.0001f)
         {
             var target = Quaternion.LookRotation(dir, Vector3.up);
             transform.rotation = Quaternion.Slerp(transform.rotation, target, smoothTurn * Time.deltaTime);
         }
 
-        // --- ANIMATOR: geglätteten speed 0..1 setzen ---
+        // --- Animator-Speed geglättet setzen ---
         if (anim)
         {
-            float target = Mathf.Clamp01(m.magnitude); // 0..1 aus WASD
+            float target = Mathf.Clamp01(m.magnitude);
             if (movingBack) target *= 0.6f;
 
-            // Mobility skaliert die „Beschleunigung“ (Rate in Einheiten pro Sekunde)
             float upRate   = (mobility <= 0f ? 0.0001f : mobility) / Mathf.Max(0.0001f, walkToRunSeconds);
             float downRate = (mobility <= 0f ? 0.0001f : mobility) / Mathf.Max(0.0001f, stopSeconds);
-
             float rate = (target > animSpeedParam) ? upRate : downRate;
-            animSpeedParam = Mathf.MoveTowards(animSpeedParam, target, rate * Time.deltaTime);
 
-            // Kein extra Damp-Time im Animator verwenden – wir glätten selbst:
+            animSpeedParam = Mathf.MoveTowards(animSpeedParam, target, rate * Time.deltaTime);
             anim.SetFloat(IDSpeed, animSpeedParam);
         }
     }
