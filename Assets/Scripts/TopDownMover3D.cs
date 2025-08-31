@@ -24,8 +24,8 @@ public class TopDownMover3D : MonoBehaviour
 
     [Header("Bounds (optional outer clamp)")]
     public bool useMapBounds = true;
-    public float clampPadding = 0.5f;    // Puffer zum Rand
-    public Transform ground;             // nur Fallback, wenn kein MapBounds vorhanden
+    public float clampPadding = 0.5f;
+    public Transform ground;
     public float margin = 0.5f;
 
     [Header("Animation Smoothing")]
@@ -35,20 +35,34 @@ public class TopDownMover3D : MonoBehaviour
     float animSpeedParam = 0f;
 
     [Header("Air Tuning")]
-    [Range(0f,1f)] public float airControlMul = 0.6f; // 0..1 horizontale Steuerung in der Luft
+    [Range(0f,1f)] public float airControlMul = 0.6f;
     public bool  lockTurnWhileAir = false;
 
-    // --- intern ---
+    [Header("Gravity (natürliches Fallen)")]
+    public float gravity = 25f;       // m/s²
+    public float maxFallSpeed = 40f;  // Kappung
+    public float groundStick = 5f;    // nur wenn grounded
+
+    [Header("Fall-Erkennung")]
+    [Tooltip("So lange muss man ungrounded sein, bevor 'air=true' (Fallen) aktiviert wird.")]
+    public float fallEnterDelay = 0.08f;
+    [Tooltip("Einmaliger Snap nach unten beim Start, um den CC sicher zu erden.")]
+    public float spawnSnapDown = 0.2f;
+    public bool  snapOnStart = true;
+
+    // intern
     Animator anim;
     static readonly int IDSpeed = Animator.StringToHash("speed");
 
     AttackFX fx;
-    PlayerJump jump;                 // dein Jump-Script
-    CharacterController controller;  // kinematische Kollision
+    PlayerJump jump;
+    CharacterController controller;
 
-    const float StickToGround = 5f;  // leichter Down-Pull, damit CC grounded bleibt
-
+    float lastJumpH = 0f;     // für Jump-Delta
+    float fallSpeed = 0f;     // akkumulierte Fallspeed
+    float notGroundedTime = 0f;
     float yLockFallback;
+    int   airHash = 0;        // optionaler Animator-Bool („air“)
 
     void Awake()
     {
@@ -59,26 +73,32 @@ public class TopDownMover3D : MonoBehaviour
         jump       = GetComponent<PlayerJump>();
         controller = GetComponent<CharacterController>();
 
+        if (jump != null && anim != null && !string.IsNullOrEmpty(jump.airBool))
+            airHash = Animator.StringToHash(jump.airBool);
+
         if (!anim) Debug.LogWarning("No Animator found under Player -> PlayerVisual -> LowPoly");
     }
 
     void Start()
     {
         yLockFallback = transform.position.y;
+        lastJumpH     = jump ? jump.CurrentHeight : 0f;
+
+        // einmal leicht „auf den Boden setzen“, damit CC direkt grounded ist
+        if (controller && snapOnStart && spawnSnapDown > 0f)
+            controller.Move(Vector3.down * spawnSnapDown);
     }
 
     void Update()
     {
-        // --- Input & kamerarelative Richtung ---
+        // --- Input & Kamera ---
         Vector2 m = GetMove();
         Vector3 camFwd = Vector3.forward, camRight = Vector3.right;
-
         if (cameraRelative && cameraTransform)
         {
             camFwd   = Vector3.ProjectOnPlane(cameraTransform.forward, Vector3.up).normalized;
             camRight = Vector3.ProjectOnPlane(cameraTransform.right,  Vector3.up).normalized;
         }
-
         Vector3 dir = camRight * m.x + camFwd * m.y;
         if (dir.sqrMagnitude > 1f) dir.Normalize();
 
@@ -87,8 +107,12 @@ public class TopDownMover3D : MonoBehaviour
 
         bool swinging = fx && fx.IsSwinging;
         bool isAir    = jump && jump.IsAir;
+        bool grounded = controller ? controller.isGrounded : true;
 
-        // Bewegungsskalierung
+        // Timer für „wirklich in der Luft“
+        if (grounded) notGroundedTime = 0f;
+        else          notGroundedTime += Time.deltaTime;
+
         float moveMul = 1f;
         if (movingBack) moveMul *= backpedalSpeedMul;
         if (swinging)   moveMul *= swingMoveMul;
@@ -96,14 +120,41 @@ public class TopDownMover3D : MonoBehaviour
 
         float moveSpeed = speed * moveMul;
 
-        // --- Move (CharacterController bevorzugt) ---
+        // --- Bewegung (CharacterController bevorzugt) ---
         if (controller)
         {
-            // CC bewegt sich in Weltkoords; kleiner Down-Pull hält ihn am Boden
-            Vector3 velocity = dir * moveSpeed + Vector3.down * StickToGround;
-            controller.Move(velocity * Time.deltaTime);
+            // 1) Horizontal
+            controller.Move(dir * (moveSpeed * Time.deltaTime));
 
-            // Rechteckiger Außenrahmen (nur X/Z clampen)
+            // 2) Vertikal aus Jump (optische Höhe)
+            float curH = jump ? jump.CurrentHeight : 0f;
+            float dH   = curH - lastJumpH;
+            if (dH != 0f) controller.Move(Vector3.up * dH);
+            lastJumpH = curH;
+
+            // 3) Natürliches Fallen (nur wenn NICHT im Jump und länger als die Gnadenzeit ungrounded)
+            if (!isAir && notGroundedTime > fallEnterDelay)
+            {
+                fallSpeed = Mathf.Min(fallSpeed + gravity * Time.deltaTime, maxFallSpeed);
+                controller.Move(Vector3.down * fallSpeed * Time.deltaTime);
+
+                if (airHash != 0 && anim) anim.SetBool(airHash, true); // Animator in „Air“
+            }
+            else
+            {
+                // am Boden oder im Jump: Fallspeed resetten
+                fallSpeed = 0f;
+
+                // leichter Boden-Pull nur wenn grounded & nicht im Jump
+                if (grounded && !isAir)
+                    controller.Move(Vector3.down * (groundStick * Time.deltaTime));
+
+                // Animator-Flag runternehmen, wenn nicht im Jump
+                if (airHash != 0 && anim && !isAir && grounded)
+                    anim.SetBool(airHash, false);
+            }
+
+            // 4) Außen-Clamp X/Z
             if (useMapBounds)
             {
                 Vector3 p = transform.position;
@@ -114,14 +165,13 @@ public class TopDownMover3D : MonoBehaviour
                     p.x = Mathf.Clamp(p.x, ground.position.x - halfX + margin, ground.position.x + halfX - margin);
                     p.z = Mathf.Clamp(p.z, ground.position.z - halfZ + margin, ground.position.z + halfZ - margin);
                 }
-                // Y dem Controller überlassen
-                p.y = transform.position.y;
+                p.y = transform.position.y; // Y kommt vom CC
                 transform.position = p;
             }
         }
         else
         {
-            // Fallback ohne Physik (wie vorher)
+            // Fallback ohne CC
             Vector3 p = transform.position + dir * (moveSpeed) * Time.deltaTime;
             p.y = yLockFallback;
             if (useMapBounds && MapBounds.I != null) p = MapBounds.I.ClampXZ(p, clampPadding);
@@ -141,7 +191,7 @@ public class TopDownMover3D : MonoBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation, target, smoothTurn * Time.deltaTime);
         }
 
-        // --- Animator-Speed geglättet setzen ---
+        // --- Animator-Speed (geglättet) ---
         if (anim)
         {
             float target = Mathf.Clamp01(m.magnitude);
@@ -149,25 +199,26 @@ public class TopDownMover3D : MonoBehaviour
 
             float upRate   = (mobility <= 0f ? 0.0001f : mobility) / Mathf.Max(0.0001f, walkToRunSeconds);
             float downRate = (mobility <= 0f ? 0.0001f : mobility) / Mathf.Max(0.0001f, stopSeconds);
-            float rate = (target > animSpeedParam) ? upRate : downRate;
+            float rate     = (target > animSpeedParam) ? upRate : downRate;
 
             animSpeedParam = Mathf.MoveTowards(animSpeedParam, target, rate * Time.deltaTime);
             anim.SetFloat(IDSpeed, animSpeedParam);
         }
     }
 
-#if ENABLE_INPUT_SYSTEM
-    Vector2 GetMove()
+    private Vector2 GetMove()
     {
+#if ENABLE_INPUT_SYSTEM
         var k = Keyboard.current;
-        if (k == null) return Vector2.zero;
-        float x = (k.aKey.isPressed || k.leftArrowKey.isPressed ? -1f : 0f)
-                + (k.dKey.isPressed || k.rightArrowKey.isPressed ?  1f : 0f);
-        float y = (k.sKey.isPressed || k.downArrowKey.isPressed ? -1f : 0f)
-                + (k.wKey.isPressed || k.upArrowKey.isPressed   ?  1f : 0f);
-        return new Vector2(x, y);
-    }
-#else
-    Vector2 GetMove() => new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+        if (k != null)
+        {
+            float x = (k.aKey.isPressed || k.leftArrowKey.isPressed ? -1f : 0f)
+                    + (k.dKey.isPressed || k.rightArrowKey.isPressed ?  1f : 0f);
+            float y = (k.sKey.isPressed || k.downArrowKey.isPressed ? -1f : 0f)
+                    + (k.wKey.isPressed || k.upArrowKey.isPressed   ?  1f : 0f);
+            return new Vector2(x, y);
+        }
 #endif
+        return new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+    }
 }
