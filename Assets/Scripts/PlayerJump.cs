@@ -7,37 +7,41 @@ using UnityEngine.InputSystem;
 public class PlayerJump : MonoBehaviour
 {
     [Header("Visual root (wird angehoben)")]
-    public Transform visualRoot;              
-    public Animator animator;                 
+    public Transform visualRoot;              // z.B. PlayerVisual
+    public Animator animator;
 
     [Header("Animator parameters")]
-    public string airBool = "air";            
-    public string jumpTrigger = "jump";       
-    public string landTrigger = "land";       // <— Default hilft beim Neu-Anlegen
+    public string airBool = "air";
+    public string jumpTrigger = "jump";
+    public string landTrigger = "land";
 
     [Header("Jump shape (1. Sprung)")]
     public float height = 1.1f;
     public float duration = 0.5f;
 
     [Header("Extra Jumps")]
-    public int   maxJumps = 2;                
+    public int   maxJumps = 2;
     public float secondJumpHeightMul   = 1.25f;
     public float secondJumpDurationMul = 0.90f;
 
     [Header("Landing FX")]
     public float landSquash = 0.08f;
     public float squashTime = 0.08f;
-    public float cooldown = 0.1f;
+    public float cooldown   = 0.10f;
 
     [Header("Air control")]
     public bool canMoveInAir = true;
     public bool lockAttackWhileAir = false;
 
-    public bool IsAir { get; private set; }
+    [Header("Integration mit CharacterController")]
+    [Tooltip("Wenn ein CC dran ist, wieviel des visuellen Bogens zusätzlich auf das Mesh addieren? 0 = kein extra (empfohlen), 1 = voller Bogen (führt zu doppelter Höhe).")]
+    [Range(0f, 1f)] public float visualArcMulWithCC = 0f;
+
+    public bool  IsAir         { get; private set; }
     public float CurrentHeight { get; private set; }
 
     Vector3 baseLocalPos, baseLocalScale;
-    float lastJumpEnd = -999f;
+    float   lastJumpEnd = -999f;
 
     int airHash, jumpHash, landHash;
 
@@ -45,7 +49,7 @@ public class PlayerJump : MonoBehaviour
     int  jumpsLeft = 0;
     bool requestExtraJump = false;
 
-    CharacterController cc; // <— für echtes Grounded
+    CharacterController cc;
 
     void Awake()
     {
@@ -72,6 +76,7 @@ public class PlayerJump : MonoBehaviour
     {
         SetAir(false);
         CurrentHeight = 0f;
+        if (visualRoot) visualRoot.localPosition = baseLocalPos;
     }
 
     void Update()
@@ -99,7 +104,7 @@ public class PlayerJump : MonoBehaviour
         if (IsAir && jumpsLeft > 0)
         {
             jumpsLeft--;
-            requestExtraJump = true; // nahtloser Double/Triple
+            requestExtraJump = true; // nahtloser Double-/Triple-Jump
             return true;
         }
 
@@ -112,12 +117,12 @@ public class PlayerJump : MonoBehaviour
         SetAir(true);
 
         float startH = CurrentHeight;
-        int arcIndex = 0;
+        int   arcIdx = 0;
 
         for (;;)
         {
-            float H = (arcIndex == 0) ? height   : height   * secondJumpHeightMul;
-            float D = (arcIndex == 0) ? duration : duration * secondJumpDurationMul;
+            float H = (arcIdx == 0) ? height   : height   * secondJumpHeightMul;
+            float D = (arcIdx == 0) ? duration : duration * secondJumpDurationMul;
 
             TrySetTrigger(jumpHash);
 
@@ -131,15 +136,15 @@ public class PlayerJump : MonoBehaviour
                 if (requestExtraJump)
                 {
                     requestExtraJump = false;
-                    startH  = CurrentHeight; // rebase
-                    arcIndex++;
+                    startH = CurrentHeight; // rebase
+                    arcIdx++;
                     restartArc = true;
                     break;
                 }
 
                 float u = Mathf.Clamp01(t / D);
-                float h = startH * (1f - u) + Parabola(u) * H; // 0..H..0
-                SetOffsetY(h);
+                float h = startH * (1f - u) + Parabola(u) * H;
+                SetOffsetY(h); // -> setzt CurrentHeight + (optional) Visualoffset
                 yield return null;
             }
 
@@ -147,27 +152,25 @@ public class PlayerJump : MonoBehaviour
             break;
         }
 
-        // --- Freefall-Phase: NICHT sofort landen ---
-        IsAir = false; // Mover übernimmt die Schwerkraft & "air" Verwaltung
-        // Fürs Animieren können wir 'air' schon oben lassen:
+        // Jump-Bogen ist fertig -> Freefall. CC/Mover übernimmt Schwerkraft & 'air'.
+        IsAir = false;
         if (animator && airHash != 0 && HasParam(airHash))
             animator.SetBool(airHash, true);
 
-        // Auf echten Bodenkontakt warten (mit CC)
+        // Auf echten Bodenkontakt warten, damit Land nicht in der Luft triggert.
         if (cc)
         {
-            yield return null; // eine Frame-Gnade
+            yield return null; // 1 Frame Gnade
             while (!cc.isGrounded) yield return null;
         }
 
-        // Jetzt WIRKLICH gelandet -> Land-Trigger feuern
         TrySetTrigger(landHash);
         SetOffsetY(0f);
 
         if (animator && airHash != 0 && HasParam(airHash))
             animator.SetBool(airHash, false);
 
-        // Squash während Idle/Locomotion
+        // Squash
         if (landSquash > 0f && visualRoot)
         {
             Vector3 s0 = baseLocalScale;
@@ -191,8 +194,14 @@ public class PlayerJump : MonoBehaviour
     void SetOffsetY(float y)
     {
         CurrentHeight = y;
+
+        // WICHTIG: wenn CC dran -> kein doppeltes Anheben des Meshes.
         if (!visualRoot) return;
-        var p = baseLocalPos; p.y += y;
+
+        float yVis = (cc ? y * visualArcMulWithCC : y);
+
+        var p = baseLocalPos;
+        p.y += yVis;
         visualRoot.localPosition = p;
     }
 
@@ -210,14 +219,12 @@ public class PlayerJump : MonoBehaviour
 
     void TrySetTrigger(int hash)
     {
-        if (hash == 0) return;
-        if (animator && HasParam(hash))
-            animator.SetTrigger(hash);
+        if (hash == 0 || !animator) return;
+        if (HasParam(hash)) animator.SetTrigger(hash);
     }
 
     bool HasParam(int hash)
     {
-        if (!animator) return false;
         foreach (var p in animator.parameters)
             if (p.nameHash == hash) return true;
         return false;
