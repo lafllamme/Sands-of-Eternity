@@ -44,7 +44,7 @@ public class TopDownMover3D : MonoBehaviour
     public float groundStick = 5f;    // nur wenn grounded
 
     [Header("Fall-Erkennung")]
-    [Tooltip("So lange muss man ungrounded sein, bevor 'air=true' (Fallen) aktiviert wird.")]
+    [Tooltip("So lange ungrounded, bevor wir in Falling wechseln.")]
     public float fallEnterDelay = 0.08f;
     [Tooltip("Einmaliger Snap nach unten beim Start, um den CC sicher zu erden.")]
     public float spawnSnapDown = 0.2f;
@@ -58,11 +58,11 @@ public class TopDownMover3D : MonoBehaviour
     PlayerJump jump;
     CharacterController controller;
 
-    float lastJumpH = 0f;     // für Jump-Delta
-    float fallSpeed = 0f;     // akkumulierte Fallspeed
+    float lastJumpH = 0f;   // Delta-Quelle aus PlayerJump.CurrentHeight
+    float fallSpeed = 0f;
     float notGroundedTime = 0f;
     float yLockFallback;
-    int   airHash = 0;        // optionaler Animator-Bool („air“)
+    int   airHash = 0;      // optionaler Animator-Bool („air“)
 
     void Awake()
     {
@@ -84,9 +84,12 @@ public class TopDownMover3D : MonoBehaviour
         yLockFallback = transform.position.y;
         lastJumpH     = jump ? jump.CurrentHeight : 0f;
 
-        // einmal leicht „auf den Boden setzen“, damit CC direkt grounded ist
-        if (controller && snapOnStart && spawnSnapDown > 0f)
-            controller.Move(Vector3.down * spawnSnapDown);
+        if (controller)
+        {
+            controller.minMoveDistance = 0f; // kleine Deltas nicht verlieren
+            if (snapOnStart && spawnSnapDown > 0f)
+                controller.Move(Vector3.down * spawnSnapDown);
+        }
     }
 
     void Update()
@@ -110,8 +113,7 @@ public class TopDownMover3D : MonoBehaviour
         bool grounded = controller ? controller.isGrounded : true;
 
         // Timer für „wirklich in der Luft“
-        if (grounded) notGroundedTime = 0f;
-        else          notGroundedTime += Time.deltaTime;
+        notGroundedTime = grounded ? 0f : notGroundedTime + Time.deltaTime;
 
         float moveMul = 1f;
         if (movingBack) moveMul *= backpedalSpeedMul;
@@ -120,20 +122,21 @@ public class TopDownMover3D : MonoBehaviour
 
         float moveSpeed = speed * moveMul;
 
-        // --- Bewegung (CharacterController bevorzugt) ---
+        // --- Bewegung (Controller bevorzugt) ---
         if (controller)
         {
             // 1) Horizontal
             controller.Move(dir * (moveSpeed * Time.deltaTime));
 
-            // 2) Vertikal aus Jump (optische Höhe)
+            // 2) Vertikal aus Jump (Delta der Sprunghöhe)
             float curH = jump ? jump.CurrentHeight : 0f;
             float dH   = curH - lastJumpH;
             if (dH != 0f) controller.Move(Vector3.up * dH);
             lastJumpH = curH;
 
-            // 3) Natürliches Fallen (nur wenn NICHT im Jump und länger als die Gnadenzeit ungrounded)
-            if (!isAir && notGroundedTime > fallEnterDelay)
+            // 3) Natürliches Fallen (nur wenn NICHT im Jump und nach Gnadenzeit)
+            bool freefall = !isAir && !grounded && notGroundedTime > fallEnterDelay;
+            if (freefall)
             {
                 fallSpeed = Mathf.Min(fallSpeed + gravity * Time.deltaTime, maxFallSpeed);
                 controller.Move(Vector3.down * fallSpeed * Time.deltaTime);
@@ -150,7 +153,7 @@ public class TopDownMover3D : MonoBehaviour
                     controller.Move(Vector3.down * (groundStick * Time.deltaTime));
 
                 // Animator-Flag runternehmen, wenn nicht im Jump
-                if (airHash != 0 && anim && !isAir && grounded)
+                if (airHash != 0 && anim && grounded && !isAir)
                     anim.SetBool(airHash, false);
             }
 
